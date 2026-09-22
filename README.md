@@ -27,7 +27,7 @@ This project uses the following additional dependencies to take care of certain 
 ## **Setup Instructions**
 
 ### **1. Prerequisites**
-Ensure you have **Python 3.8 - 3.12** installed on your machine. (Note: Mediapipe is not yet compatible with 3.13+ versions of Python. Check the [official documentation of Mediapipe](https://ai.google.dev/edge/mediapipe/solutions/setup_python) for more details.)
+Ensure you have the latest version of **Python 3.14** installed on your machine. We have recently migrated to the newest version of mediapipe which uses a [Tasks-based approach](https://developers.google.com/edge/mediapipe/solutions/guide) for performing common recognition tasks. This repository includes a lightweight pose recognition model.
 
 Download and unzip the [project files](https://github.com/utwente-interaction-lab/FIT-Interactive-Coaching-System/archive/refs/heads/main.zip) from this GitHub repository (or `git clone https://github.com/utwente-interaction-lab/FIT-Interactive-Coaching-System`)
 
@@ -145,5 +145,7 @@ Currently, the system uses text-to-speech for basic feedback. You can extend thi
    - pyttsx3 is blocking the program. Think about running it in a thread.
 3. **Performance Issues**: If the program runs slowly:
    - Close unnecessary programs that might be using system resources.
+
+For further troubleshooting you can check the official [mediapipe documentation](https://developers.google.com/edge/mediapipe/framework/getting_started/troubleshooting)
 
 ---
