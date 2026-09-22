@@ -1,10 +1,11 @@
 # Act Component: Provide feedback to the user
 
-import mediapipe as mp
 import cv2
 import numpy as np
 import random
 import pyttsx3
+from mediapipe.tasks.python import vision
+from mediapipe.tasks.python.vision import drawing_styles, drawing_utils
 
 
 # Act Component: Visualization to motivate user, visualization such as the skeleton and debugging information.
@@ -140,7 +141,13 @@ class Act:
 
         """
 
-        mp.solutions.drawing_utils.draw_landmarks(frame, joints.pose_landmarks, mp.solutions.pose.POSE_CONNECTIONS)
+        if joints.pose_landmarks:
+            drawing_utils.draw_landmarks(
+                frame,
+                joints.pose_landmarks[0],
+                vision.PoseLandmarksConnections.POSE_LANDMARKS,
+                drawing_styles.get_default_pose_landmarks_style(),
+            )
 
         # Define the number and text to display
         number = elbow_angle_mvg

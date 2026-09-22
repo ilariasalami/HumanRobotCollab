@@ -2,25 +2,44 @@ import cv2
 import mediapipe as mp
 import math
 import numpy as np
+from pathlib import Path
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 
 # Sense Component: Detect joints using the camera
 # Things you need to improve: Make the skeleton tracking smoother and robust to errors.
 class Sense:
 
-    def __init__(self):
-        # Initialize the Mediapipe Pose object to track joints
+    def __init__(self, model_path=None):
+        model_path = Path(model_path or Path(__file__).parents[1] / 'models' / 'pose_landmarker_lite.task')
+        if not model_path.is_file():
+            raise FileNotFoundError(
+                f'MediaPipe pose model not found at {model_path}. '
+                'Restore models/pose_landmarker_lite.task before running the application.'
+            )
 
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_pose = mp.solutions.pose.Pose()
+        base_options = python.BaseOptions(model_asset_path=str(model_path))
+        options = vision.PoseLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            num_poses=1,
+            min_pose_detection_confidence=0.5,
+            min_pose_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        self.mp_pose = vision.PoseLandmarker.create_from_options(options)
+        self.timestamp_ms = 0
 
         # used later for having a moving avergage
         self.angle_window = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
         self.previous_angle = -1
 
     def detect_joints(self, frame):
-        results = self.mp_pose.process(frame)
-        return results if results else None
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        self.timestamp_ms += 1
+        return self.mp_pose.detect_for_video(image, self.timestamp_ms)
 
     def calculate_angle(self, joint1, joint2, joint3):
         """
@@ -53,7 +72,7 @@ class Sense:
         window_size = 10
         angle_mvg = np.convolve(np.asarray(self.angle_window), np.ones(window_size) / window_size, mode='valid')
 
-        return math.degrees(angle_mvg)
+        return math.degrees(float(angle_mvg[0]))
 
     def extract_joint_coordinates(self, landmarks, joint):
         """
@@ -67,22 +86,21 @@ class Sense:
         - A tuple of (x, y) coordinates of the specified joint
         """
         joint_index_map = {
-            'left_shoulder': mp.solutions.pose.PoseLandmark.LEFT_SHOULDER,
-            'right_shoulder': mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER,
-            'left_elbow': mp.solutions.pose.PoseLandmark.LEFT_ELBOW,
-            'right_elbow': mp.solutions.pose.PoseLandmark.RIGHT_ELBOW,
-            'left_wrist': mp.solutions.pose.PoseLandmark.LEFT_WRIST,
-            'right_wrist': mp.solutions.pose.PoseLandmark.RIGHT_WRIST,
-            'left_hip': mp.solutions.pose.PoseLandmark.LEFT_HIP,
-            'right_hip': mp.solutions.pose.PoseLandmark.RIGHT_HIP,
-            'left_knee': mp.solutions.pose.PoseLandmark.LEFT_KNEE,
-            'right_knee': mp.solutions.pose.PoseLandmark.RIGHT_KNEE,
-            'left_ankle': mp.solutions.pose.PoseLandmark.LEFT_ANKLE,
-            'right_ankle': mp.solutions.pose.PoseLandmark.RIGHT_ANKLE
+            'left_shoulder': vision.PoseLandmark.LEFT_SHOULDER,
+            'right_shoulder': vision.PoseLandmark.RIGHT_SHOULDER,
+            'left_elbow': vision.PoseLandmark.LEFT_ELBOW,
+            'right_elbow': vision.PoseLandmark.RIGHT_ELBOW,
+            'left_wrist': vision.PoseLandmark.LEFT_WRIST,
+            'right_wrist': vision.PoseLandmark.RIGHT_WRIST,
+            'left_hip': vision.PoseLandmark.LEFT_HIP,
+            'right_hip': vision.PoseLandmark.RIGHT_HIP,
+            'left_knee': vision.PoseLandmark.LEFT_KNEE,
+            'right_knee': vision.PoseLandmark.RIGHT_KNEE,
+            'left_ankle': vision.PoseLandmark.LEFT_ANKLE,
+            'right_ankle': vision.PoseLandmark.RIGHT_ANKLE
         }
 
-        joint_index = joint_index_map[joint]
-        landmark = landmarks.landmark[joint_index]
+        landmark = landmarks[joint_index_map[joint]]
 
         return landmark.x, landmark.y
 
@@ -98,21 +116,15 @@ class Sense:
                 - An angle in degrees for the hip
                 """
         # extract the x and y coordinates
-        left_hip = [landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].x,
-                    landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].y]
-        left_shoulder = [landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value].x,
-                         landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value].y]
-        left_knee = [landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].x,
-                     landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].y]
+        left_hip = [landmarks[vision.PoseLandmark.LEFT_HIP].x, landmarks[vision.PoseLandmark.LEFT_HIP].y]
+        left_shoulder = [landmarks[vision.PoseLandmark.LEFT_SHOULDER].x, landmarks[vision.PoseLandmark.LEFT_SHOULDER].y]
+        left_knee = [landmarks[vision.PoseLandmark.LEFT_KNEE].x, landmarks[vision.PoseLandmark.LEFT_KNEE].y]
         return self.calculate_angle(left_shoulder, left_hip, left_knee)
 
     # Extracts the angle of the knee by measuring the angle between the left hip, left knee, and left ankle
     def extract_knee_angle(self, landmarks):
         # extract the x and y coordinates
-        left_hip = [landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].x,
-                    landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].y]
-        left_knee = [landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].x,
-                     landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].y]
-        left_ankle = [landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value].x,
-                      landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value].y]
+        left_hip = [landmarks[vision.PoseLandmark.LEFT_HIP].x, landmarks[vision.PoseLandmark.LEFT_HIP].y]
+        left_knee = [landmarks[vision.PoseLandmark.LEFT_KNEE].x, landmarks[vision.PoseLandmark.LEFT_KNEE].y]
+        left_ankle = [landmarks[vision.PoseLandmark.LEFT_ANKLE].x, landmarks[vision.PoseLandmark.LEFT_ANKLE].y]
         return self.calculate_angle(left_hip, left_knee, left_ankle)

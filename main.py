@@ -40,7 +40,7 @@ def main():
 
         # Sense: Detect joints
         joints = sense.detect_joints(frame)
-        landmarks = joints.pose_landmarks
+        landmarks = joints.pose_landmarks[0] if joints.pose_landmarks else None
 
         # If landmarks are detected, calculate the elbow angle
         if landmarks:
