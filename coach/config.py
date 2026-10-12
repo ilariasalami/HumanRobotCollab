@@ -71,9 +71,13 @@ LEAN_HIGH_DEG = 25
 # ---------------------------------------------------------------------------
 # Hip drop = how far the hips are below their calibrated standing height, in leg
 # lengths. First test: standing ~0.0, seated ~0.5.
-STS_STANDING_DROP = 0.10   # below this the user is standing (full stand reached)
-STS_SEATED_DROP = 0.35     # above this the user is seated
-STS_HALFWAY_DROP = 0.22    # rising above this but sitting down again = partial rep
+# Second tester (other chair and camera position): standing 0.00 +- 0.03, seated only
+# ~0.26, a half rise reached ~0.13. With the first values (0.10 / 0.35 / 0.22) no rep
+# was counted for her, so the thresholds are lowered to fit both testers. The seated
+# depth clearly differs per person and setup: measuring it per user would be better.
+STS_STANDING_DROP = 0.07   # below this the user is standing (full stand reached)
+STS_SEATED_DROP = 0.20     # above this the user is seated
+STS_HALFWAY_DROP = 0.16    # rising above this but sitting down again = partial rep
 
 STS_TARGET_REPS = 8
 STS_TARGET_REPS_SIMPLIFIED = 5
@@ -91,7 +95,10 @@ STS_INACTIVE_S = 10.0      # no movement for this long: low adherence
 # detection, the robot gives a short get-ready time and then counts down.
 SLB_HOLD_S = 10.0          # target hold time
 SLB_HOLDS_PER_LEG = 3
-SLB_DROP_GRACE_S = 0.4     # a lift detection gap shorter than this does not break the hold
+# A lift detection gap shorter than this does not break the hold. Was 0.4: with a low
+# lift (foot ~0.05-0.13 leg lengths up) detection dropped out for 0.6 s while the foot
+# was still in the air, which broke the hold.
+SLB_DROP_GRACE_S = 0.8
 SLB_REST_S = 3.0           # rest between holds (both feet down)
 SLB_GET_READY_S = 4.0      # simplified version: time to get ready before the countdown
 SLB_INACTIVE_S = 10.0      # normal version: no lift for this long: low adherence

@@ -6,6 +6,7 @@ from coach import config
 from coach import Sense
 from coach import Think
 from coach import Act
+from coach import TestLog
 from coach.Exercises import SitToStand, SingleLegBalance
 
 
@@ -20,6 +21,8 @@ def main():
 
     sense = Sense.Sense()
     act = Act.Act()
+    # Temporary: one CSV row per frame in data/, for tuning thresholds
+    test_log = TestLog.TestLog()
 
     # Step 2 test controls: which tracker is active (chosen with keys 1/2/s/r)
     exercise_class = SitToStand
@@ -54,8 +57,11 @@ def main():
 
         # Act: show the camera view and the measured values
         act.update(frame, features, balance, status)
+        test_log.write(t, features, balance, status)
 
         key = cv2.waitKey(1) & 0xFF
+        if key in (ord('c'), ord('1'), ord('2'), ord('s'), ord('r')):
+            test_log.note(f'key:{chr(key)}')
         if key == ord('q'):
             break
         elif key == ord('c'):
@@ -71,9 +77,12 @@ def main():
             simplified, tracker = not simplified, None
         elif key == ord('r'):
             tracker = None
+        elif key == ord('m'):
+            test_log.marker()
 
     cap.release()
     cv2.destroyAllWindows()
+    test_log.close()
 
 
 def searchValidCameraIndexes():

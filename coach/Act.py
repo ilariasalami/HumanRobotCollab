@@ -122,6 +122,7 @@ class Act:
         lines.append(('1 sit-to-stand  2 single-leg', GREY))
         lines.append(('s simplified on/off  r restart', GREY))
         lines.append(('c recalibrate  d debug  q quit', GREY))
+        lines.append(('m marker in test log', GREY))
 
         for i, (text, color) in enumerate(lines):
             cv2.putText(panel, text, (10, 24 + i * 21), cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1, cv2.LINE_AA)
