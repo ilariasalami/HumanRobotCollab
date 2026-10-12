@@ -109,3 +109,83 @@ SLB_INACTIVE_S = 10.0      # normal version: no lift for this long: low adherenc
 WINDOW_NAME = 'Osteoporosis Coach'
 # Show the camera image mirrored, so it feels like looking in a mirror.
 MIRROR_DISPLAY = True
+
+# ---------------------------------------------------------------------------
+# Think: exercise flow (step 3)
+# ---------------------------------------------------------------------------
+# The session runs these exercises in this order (names of the trackers in Exercises.py).
+EXERCISE_ORDER = ('sit_to_stand', 'single_leg_balance')
+# How long the instruction for an exercise is shown before tracking starts.
+DEMO_S = 6.0
+# Pause after an exercise is finished, so the praise can be read before the next
+# instruction replaces it.
+BETWEEN_EXERCISES_S = 3.0
+
+# ---------------------------------------------------------------------------
+# Think: when does the robot react (step 3)
+# ---------------------------------------------------------------------------
+# A balance level must last this long before the robot reacts to it. In the webcam
+# test the level jumped to moderate/high for a few frames during normal movements
+# (sitting down, shifting weight just before lifting a foot); without this the robot
+# would reassure or simplify all the time.
+BALANCE_MODERATE_SUSTAIN_S = 0.5
+BALANCE_HIGH_SUSTAIN_S = 1.0
+# The body must be out of view for this long before the robot says it cannot see the user.
+TRACKING_LOST_S = 1.5
+
+# The same action is not repeated within its cooldown (seconds), so the robot does not
+# say the same thing every frame while a condition lasts. Not listed = no cooldown.
+ACTION_COOLDOWN_S = {
+    'TRACKING_LOST': 6.0,
+    'REST': 10.0,
+    'REASSURE_SLOW': 8.0,
+    'REASSURE_HOLD': 8.0,
+    'MOTIVATE': 8.0,
+    'PRAISE': 6.0,
+}
+# Minimum time between two robot messages. A more urgent action (see Policy.PRIORITY)
+# is not held back by this.
+ACTION_MIN_GAP_S = 2.5
+
+# ---------------------------------------------------------------------------
+# Act: what the robot says (shown as text in step 3, spoken from step 4)
+# ---------------------------------------------------------------------------
+# How long a robot message stays on screen.
+MESSAGE_DISPLAY_S = 6.0
+
+# Key: (action name, context). The context is the cue Think gives with the action
+# (e.g. 'demo', 'switch_leg') combined with the exercise; see Act.phrase_for() for
+# the order in which keys are tried. (action name, None) is the fallback.
+PHRASES = {
+    ('INSTRUCT', 'calibrate'): 'Stand still next to your chair, facing the camera.',
+    ('INSTRUCT', 'demo:sit_to_stand'):
+        'Sit to stand. Sit down, then stand up fully without using your hands, and sit down again. '
+        'Do this 8 times.',
+    ('INSTRUCT', 'demo:sit_to_stand:simplified'):
+        'Sit to stand, easier version. Use your hands on the chair to help you. Do this 5 times.',
+    ('INSTRUCT', 'demo:single_leg_balance'):
+        'Single-leg balance. Hold the chair with one hand and lift one foot for 10 seconds. '
+        '3 times on each leg.',
+    ('INSTRUCT', 'demo:single_leg_balance:simplified'):
+        'Single-leg balance, easier version. Hold the chair with both hands, you can keep your '
+        'toe on the floor. Follow the countdown.',
+    ('INSTRUCT', 'switch_leg'): 'Now the other leg.',
+    ('INSTRUCT', 'done'): 'That was the whole session. Well done!',
+
+    ('SIMPLIFY', 'sit_to_stand'):
+        "Let's make this easier and safer. Use your hands on the chair to help you. 5 times.",
+    ('SIMPLIFY', 'single_leg_balance'):
+        "Let's make this easier and safer. Hold the chair with both hands, you can keep your "
+        'toe on the floor.',
+    ('REST', 'sit_to_stand'): 'Sit down and rest for a moment.',
+    ('REST', 'single_leg_balance'): 'Put both feet down and rest for a moment.',
+    ('REASSURE_SLOW', None): 'Take your time, slow and controlled is better.',
+    ('REASSURE_HOLD', None): 'Hold on to the chair, you are doing fine.',
+    ('MOTIVATE', None): 'Keep going, you can do this.',
+    ('MOTIVATE', 'inactive'): 'Ready when you are. Try the next one.',
+    ('MOTIVATE', 'partial_rep'): 'Almost. Try to stand up all the way.',
+    ('MOTIVATE', 'hold_broken'): 'Good try. Lift your foot again and hold a bit longer.',
+    ('PRAISE', None): 'Well done!',
+    ('PRAISE', 'exercise_done'): 'Exercise finished, great work!',
+    ('TRACKING_LOST', None): 'I cannot see your whole body. Please step back into view.',
+}

@@ -1,7 +1,7 @@
-"""Temporary test log for tuning thresholds on a real camera (step 2).
+"""Temporary test log for tuning thresholds and checking the rules on a real camera.
 
-Writes one CSV row per camera frame with every value Sense measured, the balance
-level from Think and the state of the current exercise tracker. The file goes in
+Writes one CSV row per camera frame with every value Sense measured and everything
+Think decided (flow state, balance level, tracker state, robot action). The file goes in
 data/ (ignored by git). This is a testing aid, not the event Logger planned for the
 study: remove it, or replace it with coach/Logger.py, once the thresholds are tuned.
 """
@@ -13,10 +13,12 @@ from pathlib import Path
 COLUMNS = [
     't',              # seconds since the program started
     'note',           # key presses and markers (e.g. 'key:1', 'marker:3')
-    'events',         # tracker events in this frame, separated by '|'
+    'events',         # tracker events and state changes in this frame, separated by '|'
+    'state',          # flow state: calibrate / demo / doing / done
+    'action', 'cue',  # robot action that started in this frame, and what it is about
     'valid', 'missing', 'calibrated',
     'exercise', 'simplified', 'phase', 'progress_text', 'progress', 'adherence', 'countdown',
-    'balance',
+    'balance', 'balance_sustained',
     'sway', 'sway_excess', 'sway_baseline', 'trunk_lean', 'lean_excess',
     'hip_drop', 'foot_lift', 'lifted_foot', 'torso_ratio',
     'knee_l', 'knee_r', 'hip_l', 'hip_r',
@@ -29,7 +31,7 @@ def _fmt(value):
         return ''
     if isinstance(value, float):
         return f'{value:.4f}'
-    return value
+    return value   # the csv module writes True/False and text as they are
 
 
 class TestLog:
@@ -56,21 +58,27 @@ class TestLog:
         self.note(f'marker:{self.marker_count}')
         print(f'Marker {self.marker_count}')
 
-    def write(self, t, features, balance, status):
+    def write(self, t, features, output):
         """Write one row for this frame.
 
         :param features: Features from Sense
-        :param balance: balance level from Think, or None
-        :param status: ExerciseStatus of the current exercise, or None
+        :param output: ThinkOutput from Think
         """
         if self.start_t is None:
             self.start_t = t
+        status = output.status
         row = {
             't': round(t - self.start_t, 3),
             'note': '|'.join(self.pending_notes),
-            'events': '|'.join(status.events) if status else '',
+            'events': '|'.join(output.events),
+            'state': output.state,
+            'action': '' if output.action.name == 'NONE' else output.action.name,
+            'cue': output.cue,
             'missing': '|'.join(features.missing),
-            'balance': balance,
+            'exercise': output.exercise,
+            'simplified': output.simplified if output.exercise else None,
+            'balance': output.balance,
+            'balance_sustained': output.balance_sustained,
         }
         self.pending_notes = []
         for name in ('valid', 'calibrated', 'sway', 'sway_excess', 'sway_baseline', 'trunk_lean',
@@ -78,8 +86,7 @@ class TestLog:
                      'knee_l', 'knee_r', 'hip_l', 'hip_r'):
             row[name] = getattr(features, name)
         if status is not None:
-            for name in ('exercise', 'simplified', 'phase', 'progress_text', 'progress',
-                         'adherence', 'countdown'):
+            for name in ('phase', 'progress_text', 'progress', 'adherence', 'countdown'):
                 row[name] = getattr(status, name)
         self.writer.writerow([_fmt(row.get(column)) for column in COLUMNS])
         self.file.flush()   # so nothing is lost if the program is stopped with Ctrl+C
