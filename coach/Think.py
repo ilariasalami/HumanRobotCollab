@@ -163,6 +163,7 @@ class Think:
     def on_enter_doing(self, t, **kwargs):
         self.tracker = EXERCISES[self.exercise_name](self.simplified, t)
         self.balance_filter.reset()
+        self.policy.reset()
 
     def on_enter_done(self, t, lead=0.0, **kwargs):
         self.tracker = None
@@ -257,10 +258,12 @@ class Think:
         else:
             execution = None
         observation = Observation(
+            t=t,
             tracking_ok=tracking_ok,
             exercise=self.exercise_name,
             simplified=self.simplified,
             balance=out.balance_sustained,
+            balance_now=out.balance,
             adherence='low' if status.adherence_low else 'ok',
             execution=execution,
         )

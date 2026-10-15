@@ -3,7 +3,7 @@
 The policy only sees a small discrete Observation and returns an Action. It does not
 know about the camera, the exercise trackers' internals or the screen. This is the part
 that a Bayesian network / HMM based policy can replace later: write a class with the
-same decide(observation) method and pass it to Think.
+same reset() and decide(observation) methods and pass it to Think.
 """
 
 from dataclasses import dataclass
@@ -39,17 +39,23 @@ PRIORITY = {
 
 @dataclass
 class Observation:
-    """What the policy is allowed to know in one time step (all discrete)."""
+    """What the policy is allowed to know in one time step (all discrete, except the time)."""
+    t: float                # time in seconds (frame rate varies, so a belief model needs it)
     tracking_ok: bool       # False when the body has been out of view for a while
     exercise: str           # 'sit_to_stand' or 'single_leg_balance'
     simplified: bool        # the simplified version is being done
     balance: str            # 'low' / 'moderate' / 'high' instability that has lasted (see Think)
+    balance_now: str        # balance level of this frame only (can flicker, None when unknown)
     adherence: str          # 'low' or 'ok'
     execution: str          # 'good', 'poor' (rep done but too fast) or None (nothing completed)
 
 
 class RulePolicy:
     """Fixed rules in order of priority: tracking > balance (safety) > adherence > praise."""
+
+    def reset(self):
+        """Called by Think when an exercise (or its simplified version) starts.
+        The rules keep no memory, so there is nothing to reset."""
 
     def decide(self, obs):
         """:param obs: Observation

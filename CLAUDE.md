@@ -33,13 +33,18 @@ Priority when several apply: **balance (safety) > low adherence > correct execut
 - Steps 1-2 (Sense, calibration, exercise trackers): done, tested on two webcams.
 - Step 3 (exercise-flow state machine in `coach/Think.py`, rule policy in `coach/Policy.py`, robot messages as text): written and checked with simulated sessions and a replay of a recorded webcam session; still needs a live webcam test.
 - `coach/TestLog.py` is a temporary per-frame CSV log for tuning (not the study Logger of step 5).
-- Next: step 4 (robot panel + speech), step 5 (Logger, command-line arguments, README).
+- The policy interface is fixed: `reset()` + `decide(Observation) -> Action`; Observation carries the time, the sustained and the per-frame balance level. Any policy (rules, HMM) plugs into `Think(policy=...)`.
+
+## Work split after merging step 3 into `main`
+
+Both parts branch from `main` once step 3 is merged:
+- **Assignment 3 (simulation)**: simulated user with hidden state that feeds Think, HMM belief layer + belief-based policy, `simulate.py` (headless, seeded, logs every step, timeline plot), reflection. Mostly new files.
+- **Assignment 4 (live study)**: live webcam test of step 3, step 4 (robot panel + speech), step 5 (study Logger, command-line arguments), video baseline condition.
 
 ## Later (NOT now — do not implement unless asked)
 
 - Voice commands from the user ("slow down", "skip", "easier"…) with Vosk
 - Robot asking for confirmation before switching exercise
-- Discrete Bayesian network / HMM for interpreting user state (the assignment asks for one of HMM / discrete BN / random transitions; the rule-based logic should be easy to replace or extend with a BN later)
 
 ## Codebase
 
@@ -49,7 +54,7 @@ Based on the course's example repo (FIT Interactive Coaching System, UT Interact
 |---|---|---|
 | `coach/Sense.py` | MediaPipe, elbow angle | knee, hip, trunk angles + balance/sway measure, short calibration at start |
 | `coach/Think.py` | `transitions` FSM for flexion/extension | exercise-flow FSM (demo → doing → next exercise / simplified version), rep counting, adherence + balance rules |
-| new `coach/Policy.py` | — | `RulePolicy.decide(observation) -> Action`; the part a BN/HMM policy replaces later |
+| new `coach/Policy.py` | — | `RulePolicy.decide(observation) -> Action`; an HMM belief policy (assignment 3) uses the same interface |
 | `coach/Act.py` | balloon + pyttsx3 | robot on screen showing the exercise, spoken + visual feedback |
 | new `coach/Logger.py` | — | CSV event log |
 | `main.py` | main loop | wires everything together |
