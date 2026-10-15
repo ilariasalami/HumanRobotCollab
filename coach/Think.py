@@ -281,8 +281,7 @@ class Think:
             # The SIMPLIFY message itself explains the easier version
             self.simplify_exercise(t=t, announce=False)
         elif action is Action.REST:
-            if hasattr(self.tracker, 'interrupt'):
-                out.events += self.tracker.interrupt(t)
+            out.events += self.tracker.interrupt(t)
             self.balance_filter.reset()
 
     def _next_exercise(self, t, lead):

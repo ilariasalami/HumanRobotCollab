@@ -118,6 +118,13 @@ class SitToStand:
             events.append('exercise_done')
         return events
 
+    def interrupt(self, t):
+        """The robot told the user to rest (Think, on high sway). Nothing to stop, but the
+        rest must not count as inactivity or as a slow rep."""
+        self.last_activity_t = t
+        self.last_rep_t = None
+        return []
+
     def _shift_timers(self, dt):
         self.last_activity_t += dt
         if self.last_rep_t is not None:
@@ -182,11 +189,14 @@ class SingleLegBalance:
         return 'right' if self.first_leg == 'left' else 'left'
 
     def interrupt(self, t):
-        """Stop the current hold without counting it (called by Think, e.g. on high sway)."""
-        if self.phase == 'holding':
-            self._enter('rest', t)
-            return ['hold_interrupted']
-        return []
+        """The robot told the user to rest (Think, on high sway): stop the current hold
+        without counting it and start a rest. Also when no hold is running, otherwise
+        the next hold could start right after the robot said to rest."""
+        if self.done:
+            return []
+        events = ['hold_interrupted'] if self.phase == 'holding' else []
+        self._enter('rest', t)
+        return events
 
     def update(self, features, t):
         events = []
