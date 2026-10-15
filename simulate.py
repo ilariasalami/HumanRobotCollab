@@ -10,8 +10,8 @@ something happens (hidden user state, flow state, tracker events, robot action).
 At the end a timeline figure is saved next to the log.
 
 Examples:
-    python simulate.py                          # HMM policy, 'mixed' user, seed 0
-    python simulate.py --policy rule --user shaky --seed 3
+    python simulate.py                          # HMM policy, 'mixed' user, seed 3
+    python simulate.py --policy rule --user shaky --seed 5
     python simulate.py --every-step --no-plot   # print all time steps
 """
 
@@ -37,7 +37,8 @@ def parse_args():
                         help='decision layer of the robot (default: hmm)')
     parser.add_argument('--user', choices=sorted(config.SIM_USERS), default='mixed',
                         help='simulated user profile (default: mixed)')
-    parser.add_argument('--seed', type=int, default=0, help='random seed (default: 0)')
+    # Default seed 3: a session in which every robot action happens at least once
+    parser.add_argument('--seed', type=int, default=3, help='random seed (default: 3)')
     parser.add_argument('--noise', type=float, default=1.0,
                         help='measurement noise multiplier (default: 1.0)')
     parser.add_argument('--fps', type=float, default=10.0,
