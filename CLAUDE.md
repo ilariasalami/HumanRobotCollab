@@ -33,6 +33,7 @@ Priority when several apply: **balance (safety) > low adherence > correct execut
 - Steps 1-2 (Sense, calibration, exercise trackers): done, tested on two webcams.
 - Step 3 (exercise-flow state machine in `coach/Think.py`, rule policy in `coach/Policy.py`, robot messages as text): written and checked with simulated sessions and a replay of a recorded webcam session; still needs a live webcam test.
 - `coach/TestLog.py` is a temporary per-frame CSV log for tuning (not the study Logger of step 5).
+- Assignment 3 (branch `feature/simulation-hmm`): `coach/Belief.py` (HMM forward filter over engaged / unmotivated / unstable + `BeliefPolicy`), `coach/Simulation.py` (simulated user, session runner, metrics), `simulate.py` (one session: log + timeline figure), `evaluate.py` (rule vs HMM over many seeds). HMM and simulation parameters are in `coach/config.py`. Still to do: reflection document (2-4 pages, Arial 11).
 - The policy interface is fixed: `reset()` + `decide(Observation) -> Action`; Observation carries the time, the sustained and the per-frame balance level. Any policy (rules, HMM) plugs into `Think(policy=...)`.
 
 ## Work split after merging step 3 into `main`

@@ -189,3 +189,124 @@ PHRASES = {
     ('PRAISE', 'exercise_done'): 'Exercise finished, great work!',
     ('TRACKING_LOST', None): 'I cannot see your whole body. Please step back into view.',
 }
+
+# ---------------------------------------------------------------------------
+# Think: HMM belief over the user's state (assignment 3, coach/Belief.py)
+# ---------------------------------------------------------------------------
+# Hidden user states the robot reasons about:
+#   engaged      follows the program, stable
+#   unmotivated  the program is not followed (slow, partial reps, gives up holds)
+#   unstable     needs support: sways or leans clearly more than when calibrated
+USER_STATES = ('engaged', 'unmotivated', 'unstable')
+
+# The HMM is updated at a fixed time step instead of every frame, so the same model
+# works at 10, 15 or 30 frames per second. Within a step the most frequent balance
+# level counts as the observation (a single flickering frame does not decide).
+HMM_STEP_S = 0.25
+
+# Belief at the start of the session: most people start engaged and stable.
+HMM_PRIOR = {'engaged': 0.8, 'unmotivated': 0.1, 'unstable': 0.1}
+
+# Transition rates per second (from -> to). Converted to probabilities per step with
+# p = 1 - exp(-rate * HMM_STEP_S). Small rates = states last for many seconds, which
+# is what keeps the belief from following every flicker of the balance level.
+HMM_RATES = {
+    ('engaged', 'unmotivated'): 0.02,
+    ('engaged', 'unstable'): 0.03,
+    ('unmotivated', 'engaged'): 0.05,
+    ('unmotivated', 'unstable'): 0.01,
+    ('unstable', 'engaged'): 0.10,
+    ('unstable', 'unmotivated'): 0.02,
+}
+
+# P(balance level of a step | user state). Balance does not tell engaged and
+# unmotivated apart; both show short flickers to moderate/high during normal movement
+# (seen in the webcam tests), unstable shows them most of the time.
+HMM_BALANCE_EMISSION = {
+    'engaged':     {'low': 0.86, 'moderate': 0.11, 'high': 0.03},
+    'unmotivated': {'low': 0.86, 'moderate': 0.11, 'high': 0.03},
+    'unstable':    {'low': 0.20, 'moderate': 0.40, 'high': 0.40},
+}
+
+# Relative likelihood of a tracker event given the state. Only used in a step where
+# such an event happens: no event is treated as no evidence, because how often events
+# happen depends on the exercise (a rep every ~4 s, a hold every ~13 s). Long
+# inactivity is reported by the trackers as its own 'inactive' event.
+#   low_adherence = partial_rep / too_slow / inactive / hold_broken
+#   too_fast      = rep done in less than STS_MIN_REP_S
+#   good          = rep or hold done correctly
+HMM_EVENT_LIKELIHOOD = {
+    'engaged':     {'good': 1.0, 'low_adherence': 0.1, 'too_fast': 0.2},
+    'unmotivated': {'good': 0.3, 'low_adherence': 1.0, 'too_fast': 0.1},
+    'unstable':    {'good': 0.4, 'low_adherence': 0.5, 'too_fast': 1.0},
+}
+
+# At the start of each exercise the belief is reset to a mix of HMM_PRIOR and the
+# average belief of the session so far. This is how the robot adapts to the user: a
+# user who was unstable before starts the next exercise with a higher P(unstable).
+HMM_SESSION_MEMORY = 0.5
+
+# BeliefPolicy: belief thresholds for the robot actions (same priority order as the
+# rule policy). The SIMPLIFY threshold is high because it changes the exercise.
+BELIEF_SIMPLIFY_P = 0.9
+BELIEF_REASSURE_P = 0.6
+BELIEF_MOTIVATE_P = 0.5
+
+# ---------------------------------------------------------------------------
+# Simulation (assignment 3, coach/Simulation.py): the simulated user
+# ---------------------------------------------------------------------------
+# None of this is used by the robot. These numbers make the simulated person behave
+# roughly like we did in the webcam tests; they are deliberately NOT the same as the
+# HMM parameters above (the robot's model of a user is never exact).
+
+# Transition rates of the simulated user's hidden state per second, while exercising.
+SIM_RATES = {
+    ('engaged', 'unmotivated'): 0.010,
+    ('engaged', 'unstable'): 0.010,     # multiplied by SIM_EXERCISE_RISK and fatigue
+    ('unmotivated', 'engaged'): 0.03,   # multiplied by SIM_ACTION_EFFECT after MOTIVATE
+    ('unmotivated', 'unstable'): 0.005,
+    ('unstable', 'engaged'): 0.06,      # multiplied by SIM_ACTION_EFFECT after a safety action
+    ('unstable', 'unmotivated'): 0.02,
+}
+# Single-leg balance is harder than sit-to-stand; the simplified versions are easier.
+SIM_EXERCISE_RISK = {'sit_to_stand': 1.0, 'single_leg_balance': 2.5}
+SIM_SIMPLIFIED_RISK = 0.3
+# Fatigue (0..1) grows while exercising and recovers while resting. It multiplies the
+# chance of becoming unstable or unmotivated by (1 + SIM_FATIGUE_EFFECT * fatigue).
+SIM_FATIGUE_PER_S = 0.006
+SIM_RECOVERY_PER_S = 0.03
+SIM_FATIGUE_EFFECT = 3.0
+# How the robot's actions change the user's transition rates, for SIM_ACTION_EFFECT_S
+# seconds after the action: (from state, to state, robot action) -> multiplier.
+SIM_ACTION_EFFECT_S = 6.0
+SIM_ACTION_EFFECT = {
+    ('unmotivated', 'engaged', 'MOTIVATE'): 5.0,
+    ('unmotivated', 'engaged', 'PRAISE'): 1.5,
+    ('unstable', 'engaged', 'REASSURE_SLOW'): 2.5,
+    ('unstable', 'engaged', 'REASSURE_HOLD'): 2.5,
+    ('unstable', 'engaged', 'SIMPLIFY'): 6.0,
+    ('unstable', 'engaged', 'REST'): 6.0,
+}
+# After REST the simulated user sits / puts both feet down for this long.
+SIM_REST_S = 5.0
+
+# User profiles: multipliers on the base rates (simulate.py --user).
+SIM_USERS = {
+    'steady':      {'unstable': 0.3, 'unmotivated': 0.3},
+    'mixed':       {'unstable': 1.0, 'unmotivated': 1.0},
+    'shaky':       {'unstable': 3.0, 'unmotivated': 0.7},
+    'unmotivated': {'unstable': 0.7, 'unmotivated': 3.0},
+}
+
+# Sensor model: what the camera pipeline would report, with noise.
+SIM_SEATED_DROP_RANGE = (0.26, 0.5)     # per user, both values were measured in our tests
+SIM_HIP_DROP_NOISE = 0.01
+SIM_FOOT_LIFT_NOISE = 0.015
+# Short bursts where sway/lean jump to moderate/high during normal movement (as in the
+# webcam tests). Rate per second, during movement and at rest; scaled by --noise.
+SIM_FLICKER_RATE_MOVING = 0.35
+SIM_FLICKER_RATE_STILL = 0.05
+SIM_FLICKER_DURATION_S = (0.15, 0.6)
+# Short moments where the body is not fully detected (rate per second, scaled by --noise).
+SIM_DROPOUT_RATE = 0.01
+SIM_DROPOUT_DURATION_S = (0.3, 2.5)
