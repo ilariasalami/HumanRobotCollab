@@ -188,6 +188,11 @@ PHRASES = {
     ('PRAISE', None): 'Well done!',
     ('PRAISE', 'exercise_done'): 'Exercise finished, great work!',
     ('TRACKING_LOST', None): 'I cannot see your whole body. Please step back into view.',
+
+    # The robot's own wobble (coach/Collaboration.py)
+    ('ROBOT_WOBBLE', None): "Whoa, I'm a bit wobbly myself! Can you cheer me on?",
+    ('THANK', None): 'Thank you, that helped! We make a good team.',
+    ('ROBOT_STEADY', None): "Okay, I'm steady again. Let's keep going.",
 }
 
 # ---------------------------------------------------------------------------
@@ -235,10 +240,11 @@ HMM_BALANCE_EMISSION = {
 #   low_adherence = partial_rep / too_slow / inactive / hold_broken
 #   too_fast      = rep done in less than STS_MIN_REP_S
 #   good          = rep or hold done correctly
+#   encouraged    = the user encouraged the wobbling robot (an engaged user does this most)
 HMM_EVENT_LIKELIHOOD = {
-    'engaged':     {'good': 1.0, 'low_adherence': 0.1, 'too_fast': 0.2},
-    'unmotivated': {'good': 0.3, 'low_adherence': 1.0, 'too_fast': 0.1},
-    'unstable':    {'good': 0.4, 'low_adherence': 0.5, 'too_fast': 1.0},
+    'engaged':     {'good': 1.0, 'low_adherence': 0.1, 'too_fast': 0.2, 'encouraged': 1.0},
+    'unmotivated': {'good': 0.3, 'low_adherence': 1.0, 'too_fast': 0.1, 'encouraged': 0.4},
+    'unstable':    {'good': 0.4, 'low_adherence': 0.5, 'too_fast': 1.0, 'encouraged': 0.2},
 }
 
 # At the start of each exercise the belief is reset to a mix of HMM_PRIOR and the
@@ -251,6 +257,21 @@ HMM_SESSION_MEMORY = 0.5
 BELIEF_SIMPLIFY_P = 0.9
 BELIEF_REASSURE_P = 0.6
 BELIEF_MOTIVATE_P = 0.5
+
+# ---------------------------------------------------------------------------
+# Collaboration: the robot's own wobble (assignment 3, coach/Collaboration.py)
+# ---------------------------------------------------------------------------
+# The robot exercises along with the user and loses its balance a little once or twice
+# per session, so the user can support the robot too (support goes both ways).
+ROBOT_WOBBLES = (1, 2)                  # number of wobbles per session (min, max)
+# When: after this much exercise time (seconds in 'doing') since the start of the session.
+# A session has roughly 130-200 s of exercise time.
+ROBOT_WOBBLE_WINDOW_S = (15.0, 110.0)
+ROBOT_WOBBLE_MIN_GAP_S = 25.0           # exercise time between two wobbles
+ROBOT_WOBBLE_MAX_S = 8.0                # steadies itself after this long if nobody helps
+# Safety first: no wobble within this time after a safety action, or while the user's
+# balance level is moderate/high.
+ROBOT_WOBBLE_SAFE_GAP_S = 5.0
 
 # ---------------------------------------------------------------------------
 # Simulation (assignment 3, coach/Simulation.py): the simulated user
@@ -286,7 +307,15 @@ SIM_ACTION_EFFECT = {
     ('unstable', 'engaged', 'REASSURE_HOLD'): 2.5,
     ('unstable', 'engaged', 'SIMPLIFY'): 6.0,
     ('unstable', 'engaged', 'REST'): 6.0,
+    # Being thanked by the robot for helping it gives a small motivation boost
+    ('unmotivated', 'engaged', 'THANK'): 3.0,
 }
+# Chance that the simulated user encourages the wobbling robot, by hidden state: an
+# unstable user is busy with their own balance. Encouragement starts after a reaction
+# time and lasts (is heard) for a moment.
+SIM_ENCOURAGE_P = {'engaged': 0.9, 'unmotivated': 0.5, 'unstable': 0.1}
+SIM_ENCOURAGE_DELAY_S = (1.0, 3.0)
+SIM_ENCOURAGE_DURATION_S = 1.5
 # After REST the simulated user sits / puts both feet down for this long.
 SIM_REST_S = 5.0
 # A state lasts at least this long before it can change again: a person's motivation or

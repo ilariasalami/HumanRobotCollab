@@ -42,6 +42,7 @@ TABLE = [
     ('messages', 'messages', 1),
     ('duration_s', 'duration s', 0),
     ('belief_accuracy', 'belief acc.', 2),
+    ('robot_helped', 'robot helped', 1),
 ]
 
 

@@ -20,6 +20,10 @@ class Action(Enum):
     SIMPLIFY = 'simplify'               # switch to the simplified version of the exercise
     REST = 'rest'                       # already simplified and still unstable: stop and rest
     TRACKING_LOST = 'tracking_lost'     # the camera cannot see the whole body
+    # The robot's own wobble (Collaboration.py), not chosen by the policy
+    ROBOT_WOBBLE = 'robot_wobble'       # the robot loses its balance a little
+    THANK = 'thank'                     # the user encouraged the robot: thank them
+    ROBOT_STEADY = 'robot_steady'       # nobody helped: the robot steadies itself
 
 
 # Urgency of the actions, highest first: safety > adherence > praise.
@@ -32,7 +36,10 @@ PRIORITY = {
     Action.REASSURE_HOLD: 4,
     Action.MOTIVATE: 3,
     Action.PRAISE: 2,
+    Action.THANK: 2,
     Action.INSTRUCT: 1,
+    Action.ROBOT_WOBBLE: 1,
+    Action.ROBOT_STEADY: 1,
     Action.NONE: 0,
 }
 
@@ -48,6 +55,7 @@ class Observation:
     balance_now: str        # balance level of this frame only (can flicker, None when unknown)
     adherence: str          # 'low' or 'ok'
     execution: str          # 'good', 'poor' (rep done but too fast) or None (nothing completed)
+    user_encouraged: bool = False   # the user started encouraging the wobbling robot
 
 
 class RulePolicy:

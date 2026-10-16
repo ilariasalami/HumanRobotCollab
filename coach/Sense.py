@@ -76,6 +76,10 @@ class Features:
     sway_baseline: float = None     # calibrated sway, for display/logging
     lean_excess: float = None       # |trunk lean - calibrated lean| in degrees (None until calibrated)
 
+    # Verbal cue: the user encourages the robot. Needs speech recognition, which the live
+    # app does not have yet; the simulation (Simulation.py) sets it.
+    user_encourages: bool = False
+
 
 def calculate_angle(joint1, joint2, joint3):
     """Angle in degrees at joint2 between the segments joint2-joint1 and joint2-joint3."""

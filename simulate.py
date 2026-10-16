@@ -65,6 +65,8 @@ class StepPrinter:
         notes = []
         if self.previous is None or row['user_state'] != self.previous['user_state']:
             notes.append(f'USER is {row["user_state"]}')
+        if row['user_encourages'] and not (self.previous and self.previous['user_encourages']):
+            notes.append('USER encourages the robot')
         if row['events']:
             notes.append(f'event {row["events"]}')
         if row['action']:
@@ -100,8 +102,8 @@ def plot_timeline(rows, title, path, show):
     from matplotlib.patches import Patch
 
     t = [r['t'] for r in rows]
-    fig, axes = plt.subplots(4, 1, figsize=(13, 9), sharex=True,
-                             gridspec_kw={'height_ratios': [2.2, 1.2, 1.5, 2.0]})
+    fig, axes = plt.subplots(4, 1, figsize=(13, 10), sharex=True,
+                             gridspec_kw={'height_ratios': [2.2, 1.2, 1.5, 2.8]})
     for ax in axes:
         ax.grid(axis='x', color=GRID, linewidth=0.8)
         ax.tick_params(colors=INK, labelsize=9)
@@ -171,10 +173,11 @@ def plot_timeline(rows, title, path, show):
     ax.legend(loc='upper left', bbox_to_anchor=(1.0, 1.0), fontsize=8, frameon=False)
     ax.set_title('(c) Simulated movement as measured', loc='left', fontsize=10, color=INK)
 
-    # (d) Robot actions, with the exercise blocks in the background
+    # (d) Robot actions and the user's encouragement, with the exercise blocks behind
     ax = axes[3]
     names = ['INSTRUCT', 'PRAISE', 'MOTIVATE', 'REASSURE_SLOW', 'REASSURE_HOLD',
-             'SIMPLIFY', 'REST', 'TRACKING_LOST']
+             'SIMPLIFY', 'REST', 'TRACKING_LOST', 'ROBOT_WOBBLE', 'ROBOT_STEADY', 'THANK',
+             'USER ENCOURAGES']
     for k, (start, end) in enumerate(spans('flow_state', 'doing')):
         row = next(r for r in rows if r['t'] >= start)
         ax.axvspan(start, end, color=GRID, alpha=0.6, linewidth=0)
@@ -184,10 +187,19 @@ def plot_timeline(rows, title, path, show):
                 va='top')
     acted = [(r['t'], names.index(r['action'])) for r in rows if r['action']]
     ax.scatter([a[0] for a in acted], [a[1] for a in acted], s=40, color='#0b0b0b', zorder=3)
-    ax.set_yticks(range(len(names)), [n.lower() for n in names])
+    # The human's action: hollow markers, so it reads differently from the robot's
+    helped = [r['t'] for i, r in enumerate(rows)
+              if r['user_encourages'] and not (i and rows[i - 1]['user_encourages'])]
+    ax.scatter(helped, [names.index('USER ENCOURAGES')] * len(helped), s=40, zorder=3,
+               facecolors='none', edgecolors='#0b0b0b', linewidths=1.5)
+    for start, end in spans('robot_wobbling', True):
+        ax.plot([start, end], [names.index('ROBOT_WOBBLE')] * 2, color='#0b0b0b',
+                linewidth=1.2, zorder=2)
+    ax.set_yticks(range(len(names)), [n.lower().replace('_', ' ') for n in names])
     ax.set_ylim(-0.6, len(names) - 0.1)
     ax.set_xlabel('time (s)', color=INK)
-    ax.set_title('(d) Robot actions (grey blocks: exercising)', loc='left', fontsize=10, color=INK)
+    ax.set_title('(d) Robot actions (filled) and the user encouraging the robot (hollow); '
+                 'grey blocks: exercising', loc='left', fontsize=10, color=INK)
 
     fig.suptitle(title, x=0.01, ha='left', fontsize=12, color='#0b0b0b')
     fig.tight_layout()

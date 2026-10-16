@@ -12,6 +12,9 @@ sense-think-act loop:
   (engaged / unmotivated / unstable).
 - **Act**: the robot instructs, praises, motivates, reassures, simplifies the exercise
   or tells the user to rest. Priority: safety > adherence > praise.
+- **Support goes both ways**: the robot exercises along with the user and wobbles once or
+  twice per session. If the user encourages it, it thanks them; if not, it steadies
+  itself. It never wobbles while the user needs attention for their own safety.
 
 The same Think and policies run in two ways: live with a webcam (`main.py`) and in
 simulation with a virtual user (`simulate.py`, `evaluate.py`).
@@ -96,7 +99,8 @@ exercise (testing), `d` debug panel, `m` marker in the test log, `q` quit.
 | `coach/Think.py` | Balance level, exercise-flow state machine, call to the policy, cooldowns |
 | `coach/Policy.py` | Actions, the Observation given to a policy, the rule policy |
 | `coach/Belief.py` | HMM over the user's state (forward algorithm) and the belief policy |
-| `coach/Simulation.py` | Simulated user (hidden state, movement, sensor noise), session runner, metrics |
+| `coach/Collaboration.py` | The robot's own wobble and its reaction to the user's encouragement |
+| `coach/Simulation.py` | Simulated user (hidden state, movement, sensor noise, encouraging the robot), session runner, metrics |
 | `coach/Act.py` | Camera view, robot message bar, debug panel |
 | `coach/TestLog.py` | Temporary per-frame CSV log of the live app |
 

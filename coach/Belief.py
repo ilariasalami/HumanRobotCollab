@@ -28,6 +28,7 @@ STATES = config.USER_STATES
 LOW_ADHERENCE = 'low_adherence'
 TOO_FAST = 'too_fast'
 GOOD = 'good'
+ENCOURAGED = 'encouraged'
 
 
 def transition_matrix(rates, step_s):
@@ -73,7 +74,8 @@ class UserStateHMM:
 
         :param t: time in seconds
         :param balance: balance level of this frame ('low'/'moderate'/'high' or None)
-        :param events: event symbols of this frame (LOW_ADHERENCE, TOO_FAST, GOOD)
+        :param events: event symbols of this frame (LOW_ADHERENCE, TOO_FAST, GOOD,
+            ENCOURAGED)
         :return: True if the belief was updated in this frame
         """
         if self.window_start is None:
@@ -153,6 +155,8 @@ class BeliefPolicy:
             events.append(TOO_FAST)
         elif obs.execution == 'good':
             events.append(GOOD)
+        if obs.user_encouraged:
+            events.append(ENCOURAGED)
         # Without tracking there is no balance evidence (balance_now is None then)
         self.hmm.observe(obs.t, obs.balance_now if obs.tracking_ok else None, events)
         b = self.hmm.belief

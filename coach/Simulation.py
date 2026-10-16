@@ -10,6 +10,8 @@ The simulated user has a hidden state (config.USER_STATES) that the robot never 
 The state changes at random (rates in config.SIM_RATES). Fatigue, the exercise, the
 simplified version and the robot's recent actions change those rates: this is how the
 robot's behaviour feeds back into the user, and what makes the loop a collaboration.
+Support also goes the other way: when the robot wobbles (Collaboration.py), the simulated
+user may encourage it, which the robot hears as a verbal cue (Features.user_encourages).
 
 Noise in the measurements mimics what we saw in the webcam tests: hip and foot heights
 jitter, sway and lean jump to moderate/high for a few frames during normal movement,
@@ -25,6 +27,7 @@ import random
 from coach import config
 from coach.Act import phrase_for
 from coach.Belief import BeliefPolicy
+from coach.Collaboration import RobotWobble
 from coach.Policy import Action, RulePolicy
 from coach.Sense import Features
 from coach.Think import Think
@@ -64,6 +67,8 @@ class SimulatedUser:
         self.phase = None
         self.action_t = {}              # robot action name -> last time it was given
         self.rest_until = -math.inf
+        # Encouraging the wobbling robot: heard from .. until
+        self.encourage_from = self.encourage_until = -math.inf
 
         # Body
         self.drop = 0.0                 # true hip drop (leg lengths)
@@ -279,14 +284,17 @@ class SimulatedUser:
     def _measure(self, t, lift, sway, lean):
         """Features as Sense would report them, with measurement noise and dropouts."""
         calibrated = t >= CALIBRATION_S
+        # Speech is heard even when the body is not fully in view
+        encourages = self.encourage_from <= t < self.encourage_until
         if t >= self.dropout_until and self._happens(config.SIM_DROPOUT_RATE * self.noise, self.dt):
             self.dropout_until = t + self.rng.uniform(*config.SIM_DROPOUT_DURATION_S)
         if t < self.dropout_until:
             return Features(t=t, valid=False, missing=['ankles'], calibrated=calibrated,
-                            calib_progress=1.0 if calibrated else t / CALIBRATION_S)
+                            calib_progress=1.0 if calibrated else t / CALIBRATION_S,
+                            user_encourages=encourages)
 
         f = Features(t=t, valid=True, calibrated=calibrated,
-                     calib_progress=min(1.0, t / CALIBRATION_S))
+                     calib_progress=min(1.0, t / CALIBRATION_S), user_encourages=encourages)
         if not calibrated:
             return f
         f.hip_drop = self.drop + self.rng.gauss(0, config.SIM_HIP_DROP_NOISE * self.noise)
@@ -331,6 +339,11 @@ class SimulatedUser:
             self.action_t[output.action.name] = t
             if output.action is Action.REST:
                 self.rest_until = t + config.SIM_REST_S
+            elif output.action is Action.ROBOT_WOBBLE:
+                # Cheer the robot on? Depends on how the user is doing themselves.
+                if self.rng.random() < config.SIM_ENCOURAGE_P[self.state]:
+                    self.encourage_from = t + self.rng.uniform(*config.SIM_ENCOURAGE_DELAY_S)
+                    self.encourage_until = self.encourage_from + config.SIM_ENCOURAGE_DURATION_S
 
 
 # ----------------------------------------------------------------------
@@ -355,7 +368,10 @@ def run_session(policy='hmm', user='mixed', seed=0, noise=1.0, fps=10.0, max_s=6
     rng = random.Random(seed)
     sim_user = SimulatedUser(rng, user, noise)
     robot_policy = POLICIES[policy]()
-    think = Think(policy=robot_policy)
+    # The robot's wobble moments get their own random generator, so they are the same for
+    # both policies with the same seed
+    robot_wobble = RobotWobble(random.Random(f'robot-{seed}'))
+    think = Think(policy=robot_policy, robot_wobble=robot_wobble)
     rows = []
     dt = 1.0 / fps
     step = 0
@@ -390,6 +406,8 @@ def run_session(policy='hmm', user='mixed', seed=0, noise=1.0, fps=10.0, max_s=6
             'p_engaged': belief[ENGAGED] if belief else None,
             'p_unmotivated': belief[UNMOTIVATED] if belief else None,
             'p_unstable': belief[UNSTABLE] if belief else None,
+            'robot_wobbling': output.robot_wobbling,
+            'user_encourages': features.user_encourages,
             'events': '|'.join(output.events),
             'action': output.action.name if output.action is not Action.NONE else '',
             'message': message,
@@ -421,6 +439,8 @@ def summarize(rows):
     - messages:           number of robot messages (how talkative the robot is)
     - belief_accuracy:    share of exercise steps where the most likely HMM state is the
                           true state (HMM policy only)
+    - robot_wobbles:      how often the robot wobbled itself
+    - robot_helped:       how often the user encouraged it (the robot said thank you)
     """
     doing = [r for r in rows if r['flow_state'] == 'doing']
     dt = rows[1]['t'] - rows[0]['t'] if len(rows) > 1 else 0.0
@@ -483,4 +503,6 @@ def summarize(rows):
         'simplified': sum(r['action'] == 'SIMPLIFY' for r in rows),
         'messages': sum(bool(r['action']) for r in rows),
         'belief_accuracy': accuracy,
+        'robot_wobbles': sum(r['action'] == 'ROBOT_WOBBLE' for r in rows),
+        'robot_helped': sum(r['action'] == 'THANK' for r in rows),
     }

@@ -30,6 +30,9 @@ EXERCISES = {cls.name: cls for cls in (SitToStand, SingleLegBalance)}
 # robot's wording when several happen in the same frame.
 LOW_ADHERENCE_EVENTS = ('partial_rep', 'hold_broken', 'inactive', 'too_slow')
 
+# Robot actions about the user's safety: the robot does not wobble shortly after these.
+SAFETY_ACTIONS = (Action.REASSURE_SLOW, Action.REASSURE_HOLD, Action.SIMPLIFY, Action.REST)
+
 # Longest time step counted by the BalanceFilter, so a pause in the camera stream
 # does not count as seconds of instability.
 MAX_FRAME_GAP_S = 0.25
@@ -110,6 +113,7 @@ class ThinkOutput:
     balance_sustained: str = None   # balance level that has lasted, the one the policy sees
     action: Action = Action.NONE    # robot action that starts in this frame
     cue: str = None                 # what the action is about, used by Act to pick the words
+    robot_wobbling: bool = False    # the robot is wobbling itself (Collaboration.py)
     events: list = field(default_factory=list)  # tracker events and state changes, for logging
 
 
@@ -118,8 +122,13 @@ class Think:
 
     STATES = ['calibrate', 'demo', 'doing', 'done']
 
-    def __init__(self, policy=None):
+    def __init__(self, policy=None, robot_wobble=None):
+        """:param policy: object with reset() and decide(Observation), default RulePolicy
+        :param robot_wobble: Collaboration.RobotWobble, or None: the robot never wobbles"""
         self.policy = policy or RulePolicy()
+        self.robot_wobble = robot_wobble
+        self.was_encouraging = False    # user_encourages in the previous frame
+        self.encouraged_now = False     # the user started encouraging in this frame
         self.exercise_index = 0
         self.simplified = False
         self.tracker = None
@@ -206,6 +215,10 @@ class Think:
             self.invalid_since = t
         tracking_ok = self.invalid_since is None or t - self.invalid_since < config.TRACKING_LOST_S
 
+        # Encouragement is heard for a moment; only its start counts as an event
+        self.encouraged_now = features.user_encourages and not self.was_encouraging
+        self.was_encouraging = features.user_encourages
+
         if self.state == 'calibrate':
             if features.calibrated:
                 self.calibrated(t=t)
@@ -218,6 +231,9 @@ class Think:
 
         elif self.state == 'doing':
             self._step_doing(out, features, tracking_ok, t)
+
+        if self.robot_wobble is not None:
+            self._step_robot_wobble(out, t)
 
         # Flow messages (instructions) wait until nothing else is said in this frame
         if out.action is Action.NONE and self.pending and t >= self.pending[0][0]:
@@ -266,6 +282,7 @@ class Think:
             balance_now=out.balance,
             adherence='low' if status.adherence_low else 'ok',
             execution=execution,
+            user_encouraged=self.encouraged_now,
         )
         action = self.policy.decide(observation)
 
@@ -283,6 +300,19 @@ class Think:
         elif action is Action.REST:
             out.events += self.tracker.interrupt(t)
             self.balance_filter.reset()
+
+    def _step_robot_wobble(self, out, t):
+        """The robot's own wobble and its reaction to the user's encouragement."""
+        recent_safety = any(
+            t - self.last_fired.get(a, float('-inf')) < config.ROBOT_WOBBLE_SAFE_GAP_S
+            for a in SAFETY_ACTIONS)
+        safe = not recent_safety and out.balance in (LOW, None)
+        action = self.robot_wobble.step(t, exercising=self.state == 'doing', safe=safe,
+                                        encouraged=self.encouraged_now,
+                                        free=out.action is Action.NONE)
+        if action is not Action.NONE:
+            self._give(out, action, None, t)
+        out.robot_wobbling = self.robot_wobble.wobbling
 
     def _next_exercise(self, t, lead):
         if self.exercise_index + 1 < len(config.EXERCISE_ORDER):

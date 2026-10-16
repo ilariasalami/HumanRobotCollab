@@ -33,12 +33,12 @@ Priority when several apply: **balance (safety) > low adherence > correct execut
 - Steps 1-2 (Sense, calibration, exercise trackers): done, tested on two webcams.
 - Step 3 (exercise-flow state machine in `coach/Think.py`, rule policy in `coach/Policy.py`, robot messages as text): written and checked with simulated sessions and a replay of a recorded webcam session; still needs a live webcam test.
 - `coach/TestLog.py` is a temporary per-frame CSV log for tuning (not the study Logger of step 5).
-- Assignment 3 (branch `feature/simulation-hmm`): `coach/Belief.py` (HMM forward filter over engaged / unmotivated / unstable + `BeliefPolicy`), `coach/Simulation.py` (simulated user, session runner, metrics), `simulate.py` (one session: log + timeline figure), `evaluate.py` (rule vs HMM over many seeds). HMM and simulation parameters are in `coach/config.py`. Still to do: reflection document (2-4 pages, Arial 11).
+- Assignment 3 (branch `feature/simulation-hmm`): `coach/Belief.py` (HMM forward filter over engaged / unmotivated / unstable + `BeliefPolicy`), `coach/Simulation.py` (simulated user, session runner, metrics), `simulate.py` (one session: log + timeline figure), `evaluate.py` (rule vs HMM over many seeds), `coach/Collaboration.py` (the robot wobbles 1-2 times per session; the user's encouragement is a verbal cue `Features.user_encourages`, set only by the simulation; the robot thanks them or steadies itself after 8 s; never while the user needs attention for safety). HMM and simulation parameters are in `coach/config.py`. Still to do: reflection document (2-4 pages, Arial 11), decide how to hand in (merge into `main` or zip).
 - The policy interface is fixed: `reset()` + `decide(Observation) -> Action`; Observation carries the time, the sustained and the per-frame balance level. Any policy (rules, HMM) plugs into `Think(policy=...)`.
 
-## Work split after merging step 3 into `main`
+## Work split
 
-Both parts branch from `main` once step 3 is merged:
+Assignment 3 is done on `feature/simulation-hmm` only (shared-code fixes found in simulation are made there too). The assignment 4 group works from `feature/flow-and-policy` on their own branch and adapts the live code themselves; it does not need to be merged into `main`.
 - **Assignment 3 (simulation)**: simulated user with hidden state that feeds Think, HMM belief layer + belief-based policy, `simulate.py` (headless, seeded, logs every step, timeline plot), reflection. Mostly new files.
 - **Assignment 4 (live study)**: live webcam test of step 3, step 4 (robot panel + speech), step 5 (study Logger, command-line arguments), video baseline condition.
 
