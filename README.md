@@ -19,6 +19,18 @@ sense-think-act loop:
 The same Think and policies run in two ways: live with a webcam (`main.py`) and in
 simulation with a virtual user (`simulate.py`, `evaluate.py`).
 
+## Quick start: the simulation (assignment 3)
+
+After the setup below, no camera is needed:
+
+```powershell
+python simulate.py --live     # one session: terminal log, CSV, timeline figure, live view
+python evaluate.py            # rule policy vs HMM policy over many sessions (~3 minutes)
+```
+
+Each time step (0.1 s of simulated time) runs one full sense-think-act cycle; a session
+lasts about 2,000-2,700 time steps. All output goes to `data/`.
+
 Based on the [FIT Interactive Coaching System](https://github.com/utwente-interaction-lab/FIT-Interactive-Coaching-System)
 of the UT Interaction Lab (MIT license, see `LICENSE`).
 
@@ -66,6 +78,7 @@ Options:
 | `--live` | replay the session in a window (see below) |
 | `--save-video` | write the replay to `data/sim_<policy>_<user>_seed<n>.mp4` (takes about 2 minutes) |
 | `--speed 2` | replay speed for `--live` and `--save-video` |
+| `--frames 88,117` | save stills of the live view at these times as `data/..._t88.png` |
 | `--no-plot`, `--show` | skip the figure / also open it in a window |
 
 ### Live view
@@ -111,6 +124,7 @@ exercise (testing), `d` debug panel, `m` marker in the test log, `q` quit.
 | `simulate.py` | One simulated session: log + timeline figure |
 | `evaluate.py` | Rule vs HMM policy over many simulated sessions |
 | `coach/config.py` | All thresholds, timings, phrases, HMM and simulation parameters |
+| `coach/Features.py` | What Sense measures in one frame (also produced by the simulation) |
 | `coach/Sense.py` | MediaPipe landmarks -> angles, hip drop, foot lift, sway, lean; calibration |
 | `coach/Exercises.py` | Sit-to-stand and single-leg balance trackers (reps, holds, adherence events) |
 | `coach/Think.py` | Balance level, exercise-flow state machine, call to the policy, cooldowns |
@@ -119,7 +133,12 @@ exercise (testing), `d` debug panel, `m` marker in the test log, `q` quit.
 | `coach/LiveView.py` | Live view / video of a simulated session (drawing only) |
 | `coach/Collaboration.py` | The robot's own wobble and its reaction to the user's encouragement |
 | `coach/Simulation.py` | Simulated user (hidden state, movement, sensor noise, encouraging the robot), session runner, metrics |
+| `coach/Phrases.py` | What the robot says for each action (from `config.PHRASES`) |
 | `coach/Act.py` | Camera view, robot message bar, debug panel |
 | `coach/TestLog.py` | Temporary per-frame CSV log of the live app |
 
 Logs and figures go in `data/`, which is not committed.
+
+The simulation does not need MediaPipe or a camera; only the live app does. The code
+follows PEP 8 with lines of up to 99 characters (`setup.cfg`); check it with
+`pip install pycodestyle` and `python -m pycodestyle main.py simulate.py evaluate.py coach`.

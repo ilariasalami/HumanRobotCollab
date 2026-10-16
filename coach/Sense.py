@@ -1,6 +1,6 @@
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -10,6 +10,9 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 from coach import config
+# Features lives in its own module so the simulation can use it without
+# MediaPipe; it is imported here so Sense.Features keeps working.
+from coach.Features import Features  # noqa: F401
 
 
 # Landmarks that must be visible for a frame to be used (full body except arms/face).
@@ -40,45 +43,6 @@ class Baseline:
     hip_l: float
     hip_r: float
     trunk_lean: float
-
-
-@dataclass
-class Features:
-    """Everything Sense measured in one frame. Values are None when not available
-    (body not fully visible, or the value needs a calibration that has not happened yet)."""
-    t: float
-    valid: bool = False             # all required landmarks visible
-    missing: list = field(default_factory=list)
-    landmarks: object = None        # raw MediaPipe landmarks, only for drawing
-
-    # Joint angles in degrees (image plane). From a frontal camera knee/hip flexion is
-    # unreliable: these are logged but no rule depends on them.
-    knee_l: float = None
-    knee_r: float = None
-    hip_l: float = None
-    hip_r: float = None
-    # Sideways trunk lean in degrees from vertical, positive = leaning to the person's left.
-    trunk_lean: float = None
-
-    # Calibration status
-    calibrated: bool = False
-    calib_progress: float = 0.0     # 0..1 while calibrating
-
-    # Relative to calibration (None until calibrated)
-    torso_ratio: float = None       # apparent torso length / baseline; < 1 hints at forward lean
-    hip_drop: float = None          # hip lowering in leg lengths: ~0 standing, larger when sitting
-    foot_lift: float = None         # ankle height difference in leg lengths, + = left foot higher
-    lifted_foot: str = None         # 'left', 'right' or None
-
-    # Balance
-    sway: float = None              # std of hip offset over the last SWAY_WINDOW_S, shoulder widths
-    sway_excess: float = None       # sway above the calibrated baseline (>= 0, None until calibrated)
-    sway_baseline: float = None     # calibrated sway, for display/logging
-    lean_excess: float = None       # |trunk lean - calibrated lean| in degrees (None until calibrated)
-
-    # Verbal cue: the user encourages the robot. Needs speech recognition, which the live
-    # app does not have yet; the simulation (Simulation.py) sets it.
-    user_encourages: bool = False
 
 
 def calculate_angle(joint1, joint2, joint3):
@@ -162,7 +126,8 @@ class Calibrator:
 class Sense:
 
     def __init__(self, model_path=None):
-        model_path = Path(model_path or Path(__file__).parents[1] / 'models' / 'pose_landmarker_lite.task')
+        default_model = Path(__file__).parents[1] / 'models' / 'pose_landmarker_lite.task'
+        model_path = Path(model_path or default_model)
         if not model_path.is_file():
             raise FileNotFoundError(
                 f'MediaPipe pose model not found at {model_path}. '
@@ -252,7 +217,8 @@ class Sense:
             features.hip_drop = float(hip_mid[1] - b.hip_y) / b.leg_length
             features.lean_excess = abs(features.trunk_lean - b.trunk_lean)
             features.sway_baseline = b.sway
-            features.foot_lift = float(p['right_ankle'][1] - p['left_ankle'][1]) / b.leg_length - b.ankle_diff
+            ankle_diff = float(p['right_ankle'][1] - p['left_ankle'][1]) / b.leg_length
+            features.foot_lift = ankle_diff - b.ankle_diff
             if features.foot_lift > config.FOOT_LIFT_THRESHOLD:
                 features.lifted_foot = 'left'
             elif features.foot_lift < -config.FOOT_LIFT_THRESHOLD:
@@ -270,7 +236,8 @@ class Sense:
         # After calibration normalise by the calibrated shoulder width: the current one
         # shrinks when the user turns, which would inflate the sway.
         norm_width = self.baseline.shoulder_width if self.baseline else shoulder_width
-        features.sway = self._update_sway(offset_px / max(norm_width, 1.0), features.lifted_foot, t)
+        features.sway = self._update_sway(offset_px / max(norm_width, 1.0), features.lifted_foot,
+                                          t)
         if self.baseline is not None and features.sway is not None:
             features.sway_excess = max(0.0, features.sway - self.baseline.sway)
 
@@ -309,7 +276,8 @@ class Sense:
         for name, index in REQUIRED_LANDMARKS.items():
             point = np.array([landmarks[index].x * w, landmarks[index].y * h])
             previous = self.smoothed_points.get(name)
-            self.smoothed_points[name] = point if previous is None else alpha * point + (1 - alpha) * previous
+            self.smoothed_points[name] = (point if previous is None
+                                          else alpha * point + (1 - alpha) * previous)
         return self.smoothed_points
 
     def _update_sway(self, offset, reference, t):

@@ -15,6 +15,7 @@ Examples:
     python simulate.py --every-step --no-plot   # print all time steps
     python simulate.py --live                   # replay the session in a window
     python simulate.py --save-video --no-plot   # write the replay to an .mp4 file
+    python simulate.py --frames 88,117          # stills of the live view (for the report)
 """
 
 import argparse
@@ -55,6 +56,10 @@ def parse_args():
                         help='write the replay to data/<name>.mp4')
     parser.add_argument('--speed', type=float, default=2.0,
                         help='replay speed for --live and --save-video (default: 2)')
+    parser.add_argument('--frames', type=lambda text: [float(x) for x in text.split(',')],
+                        default=[], metavar='T1,T2,...',
+                        help='save stills of the live view at these times (seconds) as PNG, '
+                             'e.g. --frames 88,117')
     return parser.parse_args()
 
 
@@ -242,10 +247,15 @@ def main():
         plot_timeline(rows, title, png_path, args.show)
         print(f'  figure: {png_path}')
 
-    if args.live or args.save_video:
+    if args.live or args.save_video or args.frames:
         from coach.LiveView import LiveView
         view = LiveView(rows, f'Living room - {args.policy} policy, {args.user} user, '
                               f'seed {args.seed}')
+        for t in args.frames:
+            i = min(range(len(rows)), key=lambda k: abs(rows[k]['t'] - t))
+            png_path = DATA_DIR / f'{name}_t{t:g}.png'
+            view.render(i, args.speed, interactive=False).save(png_path)
+            print(f'  still: {png_path}')
         if args.save_video:
             mp4_path = DATA_DIR / f'{name}.mp4'
             print(f'  writing video ({len(rows)} frames)...')

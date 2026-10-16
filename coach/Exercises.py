@@ -19,12 +19,14 @@ class ExerciseStatus:
     @property
     def adherence_low(self):
         """True in a frame where something happened that means the program is not followed."""
-        return any(e in self.events for e in ('partial_rep', 'too_slow', 'inactive', 'hold_broken'))
+        return any(e in self.events
+                   for e in ('partial_rep', 'too_slow', 'inactive', 'hold_broken'))
 
     @property
     def execution_good(self):
         """True in a frame where a rep/hold was completed correctly."""
-        return ('rep_done' in self.events and 'too_fast' not in self.events) or 'hold_done' in self.events
+        return (('rep_done' in self.events and 'too_fast' not in self.events)
+                or 'hold_done' in self.events)
 
 
 class SitToStand:
@@ -47,7 +49,7 @@ class SitToStand:
         self.reps = 0
         self.good_reps = 0
         self.partial_reps = 0
-        self.lowest_drop = None         # lowest hip drop reached while rising (closest to standing)
+        self.lowest_drop = None         # lowest hip drop while rising (closest to standing)
         self.last_rep_t = None
         self.last_activity_t = t
         self.last_t = t
@@ -310,7 +312,8 @@ class SingleLegBalance:
         else:
             leg = self.required_leg()
             leg_text = f'{leg} leg' if leg else f'leg {self.leg_set}'
-            text = f'{leg_text}: hold {min(self.holds + 1, config.SLB_HOLDS_PER_LEG)}/{config.SLB_HOLDS_PER_LEG}'
+            per_leg = config.SLB_HOLDS_PER_LEG
+            text = f'{leg_text}: hold {min(self.holds + 1, per_leg)}/{per_leg}'
 
         attempts = self.completed_holds + self.broken_holds
         return ExerciseStatus(

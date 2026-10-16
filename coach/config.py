@@ -154,12 +154,13 @@ ACTION_MIN_GAP_S = 2.5
 MESSAGE_DISPLAY_S = 6.0
 
 # Key: (action name, context). The context is the cue Think gives with the action
-# (e.g. 'demo', 'switch_leg') combined with the exercise; see Act.phrase_for() for
+# (e.g. 'demo', 'switch_leg') combined with the exercise; see Phrases.phrase_for() for
 # the order in which keys are tried. (action name, None) is the fallback.
 PHRASES = {
     ('INSTRUCT', 'calibrate'): 'Stand still next to your chair, facing the camera.',
     ('INSTRUCT', 'demo:sit_to_stand'):
-        'Sit to stand. Sit down, then stand up fully without using your hands, and sit down again. '
+        'Sit to stand. Sit down, then stand up fully without using your hands, '
+        'and sit down again. '
         'Do this 8 times.',
     ('INSTRUCT', 'demo:sit_to_stand:simplified'):
         'Sit to stand, easier version. Use your hands on the chair to help you. Do this 5 times.',

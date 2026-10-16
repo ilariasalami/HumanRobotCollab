@@ -27,11 +27,11 @@ import math
 import random
 
 from coach import config
-from coach.Act import phrase_for
 from coach.Belief import BeliefPolicy
 from coach.Collaboration import RobotWobble
+from coach.Features import Features
+from coach.Phrases import phrase_for
 from coach.Policy import Action, RulePolicy
-from coach.Sense import Features
 from coach.Think import Think
 
 ENGAGED, UNMOTIVATED, UNSTABLE = config.USER_STATES
@@ -324,7 +324,8 @@ class SimulatedUser:
         calibrated = t >= CALIBRATION_S
         # Speech is heard even when the body is not fully in view
         encourages = self.encourage_from <= t < self.encourage_until
-        if t >= self.dropout_until and self._happens(config.SIM_DROPOUT_RATE * self.noise, self.dt):
+        glitch_rate = config.SIM_DROPOUT_RATE * self.noise
+        if t >= self.dropout_until and self._happens(glitch_rate, self.dt):
             self.dropout_until = t + self.rng.uniform(*config.SIM_DROPOUT_DURATION_S)
         # Out of view: a detection glitch, or the feet left the camera view (near the laptop)
         if t < self.dropout_until or self.walk_frac > 0.5:

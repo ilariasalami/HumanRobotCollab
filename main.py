@@ -26,7 +26,7 @@ def main():
     test_log = TestLog.TestLog()
 
     # Search and print available camera devices (may take a while to complete)
-    #searchValidCameraIndexes()
+    # searchValidCameraIndexes()
 
     cap = cv2.VideoCapture(config.CAMERA_INDEX)
     start_t = None
@@ -57,7 +57,8 @@ def main():
         for event in output.events:
             print(f'{clock}  {previous[0]:9} {previous[1] or "-":18} event   {event}')
         if output.action is not Action.NONE:
-            print(f'{clock}  {output.state:9} {output.exercise or "-":18} ROBOT   {output.action.name}: "{message}"')
+            print(f'{clock}  {output.state:9} {output.exercise or "-":18} '
+                  f'ROBOT   {output.action.name}: "{message}"')
         previous = (output.state, output.exercise)
         test_log.write(t, features, output)
 
@@ -84,7 +85,7 @@ def main():
 def searchValidCameraIndexes():
     # checks the first 10 indexes. May take a while to complete
 
-    print(f"Searching available camera index nrs")
+    print("Searching available camera index nrs")
     valid_cams = []
     for i in range(10):
         cap = cv2.VideoCapture(i)
@@ -95,6 +96,7 @@ def searchValidCameraIndexes():
             valid_cams.append(i)
 
     print(f"Available camera index nrs: {valid_cams}")
+
 
 if __name__ == "__main__":
     main()
