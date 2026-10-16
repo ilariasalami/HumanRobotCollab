@@ -75,11 +75,12 @@ python simulate.py --live
 ```
 
 Replays the session in a window. Left, **the room** (side view): the chair, the user as a
-stick figure that sits, stands, lifts a foot and sways, and the laptop with the webcam and
-the robot's face about 3 m away; speech bubbles show what the robot says and when the user
-encourages it. The user's hidden state is shown small, marked "simulator only". Right,
-**the robot's mind**: its beliefs (HMM), desires (its priorities) and intention (current
-plan and action). Keys: space pause, `+` / `-` speed, `q` quit.
+figure that sits, stands, lifts a foot and sways, and the laptop with the webcam and the
+robot's face about 3 m away (it tilts when the robot wobbles). Speech bubbles show what the
+robot says and when the user encourages it; a banner marks key moments (safety actions,
+the robot's wobble). Right, a card with what the robot thinks the user is (the HMM
+belief), what the user actually is (simulator only), the exercise with its progress, and
+the robot's body. Keys: space pause, `+` / `-` speed, `q` quit; the window can be resized.
 
 ### Comparing the policies
 

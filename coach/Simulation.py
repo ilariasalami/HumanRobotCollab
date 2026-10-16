@@ -399,6 +399,7 @@ def run_session(policy='hmm', user='mixed', seed=0, noise=1.0, fps=10.0, max_s=6
             'simplified': output.simplified,
             'phase': status.phase if status else '',
             'progress': status.progress_text if status else '',
+            'progress_frac': status.progress if status else None,
             'valid': features.valid,
             'hip_drop': features.hip_drop, 'foot_lift': features.foot_lift,
             'sway_excess': features.sway_excess, 'lean_excess': features.lean_excess,
