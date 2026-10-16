@@ -210,3 +210,6 @@ __marimo__/
 data/
 *.csv
 *.mp4
+
+# Notes for Claude Code (kept locally, not part of the delivery)
+CLAUDE.md
