@@ -1,151 +1,144 @@
-# **Interactive Coaching System for Post-Stroke Rehabilitation**
+# Osteoporosis Exercise Coach
 
-## **Project Overview**
-This project implements an interactive coaching system for post-stroke rehabilitation. The system tracks joint movements using a camera and provides feedback to users. It features the following components:
+A socially assistive virtual robot that guides weight-bearing exercises for osteoporosis
+rehabilitation (University of Twente, Human-Robot Collaboration course). It is built as a
+sense-think-act loop:
 
-- **Sense**: Uses Mediapipe to detect and measure joint angles (specifically elbow flexion/extension).
-- **Think**: Implements a state machine to track movement patterns (flexion/extension).
-- **Act**: Visualizes the user's movements and provides graphical feedback via a balloon animation that inflates with successful repetitions and explodes after 10 successful transitions.
+- **Sense**: body landmarks from a webcam (MediaPipe), turned into hip drop, foot lift,
+  sway and trunk lean, relative to a short calibration.
+- **Think**: exercise trackers (sit-to-stand reps, single-leg balance holds), an
+  exercise-flow state machine, and a policy that chooses the robot's action: a fixed rule
+  policy, or an HMM that keeps a belief over the user's hidden state
+  (engaged / unmotivated / unstable).
+- **Act**: the robot instructs, praises, motivates, reassures, simplifies the exercise
+  or tells the user to rest. Priority: safety > adherence > praise.
+- **Support goes both ways**: the robot exercises along with the user and wobbles once or
+  twice per session. If the user encourages it, it thanks them; if not, it steadies
+  itself. It never wobbles while the user needs attention for their own safety.
 
-### **Main Features**
-- Tracks elbow flexion/extension movements in real-time.
-- State machine logic (based on transitions between flexion and extension).
-- Balloon visualization as graphical feedback for exercise progress.
-- Text-to-speech (TTS) audio feedback to encourage users.
+The same Think and policies run in two ways: live with a webcam (`main.py`) and in
+simulation with a virtual user (`simulate.py`, `evaluate.py`).
 
-### **Dependencies**
+## Quick start: the simulation (assignment 3)
 
-This project uses the following additional dependencies to take care of certain functionality:
-
-- OpenCV: For camera input and rendering the visual feedback.
-- Mediapipe: For joint detection and motion tracking.
-- pyttsx3: For text-to-speech functionality to provide audio feedback.
-- transitions: For implementing the finite state machine to track movement states.
-
----
-
-## **Setup Instructions**
-
-### **1. Prerequisites**
-Ensure you have the latest version of **Python 3.14** installed on your machine. We have recently migrated to the newest version of mediapipe which uses a [Tasks-based approach](https://developers.google.com/edge/mediapipe/solutions/guide) for performing common recognition tasks. This repository includes a lightweight pose recognition model.
-
-Download and unzip the [project files](https://github.com/utwente-interaction-lab/FIT-Interactive-Coaching-System/archive/refs/heads/main.zip) from this GitHub repository (or `git clone https://github.com/utwente-interaction-lab/FIT-Interactive-Coaching-System`)
-
-### **2. Installing Dependencies**
-
-It is strongly recommended to create a virtual environment for your project, this may prevent issues with conflicting dependencies on your system (see https://docs.python.org/3/library/venv.html for
-detailed instructions how to create a virtual environment on other OS). Instructions for Windows PowerShell:
+After the setup below, no camera is needed:
 
 ```powershell
-py -m venv venv/
+python simulate.py --live     # one session: terminal log, CSV, timeline figure, live view
+python evaluate.py            # rule policy vs HMM policy over many sessions (~3 minutes)
 ```
 
-Make sure to activate the environment each time you (re)open a terminal.
+Each time step (0.1 s of simulated time) runs one full sense-think-act cycle; a session
+lasts about 2,000-2,700 time steps. All output goes to `data/`.
+
+Based on the [FIT Interactive Coaching System](https://github.com/utwente-interaction-lab/FIT-Interactive-Coaching-System)
+of the UT Interaction Lab (MIT license, see `LICENSE`).
+
+## Setup (Windows PowerShell)
+
+Requires Python 3.14.
 
 ```powershell
+py -3.14 -m venv venv
 .\venv\Scripts\activate
-```
-
-$${\color{red}Troubleshooting}$$: If you get a warning about the script being disabled due to the powershell execution policy, please [update the policy](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-7.5) accordingly:
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-
-Before installing dependencies you may need to first update pip to the latest version.
-
-```powershell
-py -m pip install --upgrade pip
-```
-You can install the required Python libraries using a package manager like `pip` for Python. Make sure your system has access to these libraries, and ensure the camera is working correctly.
-
-```powershell
-pip install opencv-python mediapipe pyttsx3 transitions
-```
-
-or you can try install the requirements
-
-```powershell
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
----
+If activation is blocked by the execution policy:
+`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
-## **How to Run the Program**
+## Simulation (no camera needed)
 
-Once the dependencies are installed:
-1. Ensure that your webcam is functional and has access permissions.
-2. Navigate to the directory containing the project files.
-3. Run the script in your Python environment.
-4. The program will start tracking your elbow movements, and a balloon will inflate after each flexion-extension cycle. After 10 cycles, the balloon will explode to provide feedback.
+### One session
 
----
-
-## **Project Structure**
-```md
-
-├── main.py               # Entry point for the program
-├── sense.py              # Handles joint detection and angle calculation using Mediapipe
-├── think.py              # Implements the state machine to track flexion/extension and timeout events
-├── act.py                # Handles visual and auditory feedback (balloon animation and TTS)
-├── README.md             # Documentation (this file)
-└── requirements.txt      # Optional: Lists the dependencies for the project
+```powershell
+python simulate.py
 ```
 
-Each component of the system (Sense, Think, Act) is modular, allowing for easy updates and extensions. Here's a breakdown of each file's role:
+Runs a full session (calibration, sit-to-stand, single-leg balance) with a simulated user
+and the HMM policy. The terminal shows every time step where something happens: the
+hidden user state, the robot's belief, tracker events and the robot's action with what it
+says. It writes:
 
-* main.py: This is the main script that ties all the components together. It initializes the Sense, Think, and Act components and runs the main loop.
-* sense.py: Responsible for using Mediapipe to detect joint positions, compute angles, and process the motion input.
-* think.py: Contains the decision-making logic using a state machine. This tracks transitions between flexion and extension and handles timeouts for inactivity.
-* act.py: Manages the visual and audio feedback (e.g., the balloon animation and text-to-speech encouragement).
-* README.md: The project documentation, which provides setup instructions, project structure, and guidance for extending the code.
-* requirements.txt: (Optional) Lists the Python dependencies, making it easier to install everything needed to run the project.
+- `data/sim_<policy>_<user>_seed<n>.csv`: one row per time step (true user state, measured
+  values, balance level, belief, flow state, events, robot action)
+- `data/sim_<policy>_<user>_seed<n>.png`: timeline of the session
 
-## **How to Extend the Project**
+Options:
 
-### **1. Add More Joints**
-Currently, the system tracks only the elbow joint. You can extend the system to track multiple joints (e.g., shoulders, knees) by modifying the **Sense** component.
+| Option | Meaning |
+|---|---|
+| `--policy hmm` / `--policy rule` | HMM belief policy (default) or the fixed rules |
+| `--user mixed` | simulated user: `steady`, `mixed` (default), `shaky`, `unmotivated` |
+| `--seed 4` | random seed (default 4: a session where every key robot action occurs); the same seed gives the same session |
+| `--noise 1.0` | measurement noise multiplier |
+| `--fps 10` | simulated camera frame rate |
+| `--every-step` | print every time step |
+| `--live` | replay the session in a window (see below) |
+| `--save-video` | write the replay to `data/sim_<policy>_<user>_seed<n>.mp4` (takes about 2 minutes) |
+| `--speed 2` | replay speed for `--live` and `--save-video` |
+| `--frames 88,117` | save stills of the live view at these times as `data/..._t88.png` |
+| `--no-plot`, `--show` | skip the figure / also open it in a window |
 
-- **Sense Component**: Modify `sense.py` to detect additional joints using Mediapipe. Calculate and analyze other angles or movements.
-  - Example: Add shoulder tracking to monitor overall arm movement.
-  
-### **2. Advanced Visualization**
-The current visualization includes a simple balloon animation. You can improve this by implementing more complex feedback mechanisms, such as:
-- Showing different animations based on specific goals.
-- Incorporating 3D graphics or more interactive agents.
-- Tracking the user’s progress visually over time.
+### Live view
 
-- **Act Component**: Modify `act.py` to include more sophisticated visualizations. For example, you can create an animated character that mimics the user’s movement.
+```powershell
+python simulate.py --live
+```
 
-### **3. More Complex State Logic**
-The decision-making component is based on a simple state machine that tracks flexion and extension transitions. You can expand this logic by implementing:
-- More states (e.g., slow motion detection or incorrect movement feedback).
-- Add more complex behavior trees or state charts to represent more nuanced movements.
-- Adaptive difficulty settings based on user performance.
+Replays the session in a window. Left, **the room** (side view): the chair, the user as a
+figure that sits, stands, lifts a foot and sways, and the laptop with the webcam and the
+robot's face about 3 m away (it tilts when the robot wobbles). Speech bubbles show what the
+robot says and when the user encourages it; a banner marks key moments (safety actions,
+the robot's wobble). Right, a card with what the robot thinks the user is (the HMM
+belief), what the user actually is (simulator only), the exercise with its progress, and
+the robot's body. Keys: space pause, `+` / `-` speed, `q` quit; the window can be resized.
 
-- **Think Component**: Modify `think.py` to introduce more states or more complex decision-making. Consider using behavior trees to model more intricate feedback.
+### Comparing the policies
 
-### **4. Enhanced Feedback and Audio**
-Currently, the system uses text-to-speech for basic feedback. You can extend this by:
-- Adding more detailed and context-aware feedback based on the user's performance.
-- Introducing different TTS voices or background music for motivation.
-- Dynamic feedback based on user improvement (e.g., congratulating the user after milestones).
+```powershell
+python evaluate.py --seeds 20
+```
 
-- **Think/Act Components**: Modify both `think.py` and `act.py` to add more intelligent feedback mechanisms. You could use different motivational messages depending on performance or vary the frequency of feedback.
+Runs 20 sessions per policy for the `mixed` user at three noise levels and for each
+other user profile. Prints a table (detected unstable episodes, time to the first safety
+action, false alarms, time spent unstable, time to motivate, number of messages, HMM
+accuracy) and writes `data/evaluation.csv` and `data/evaluation.png`. Takes 2-3 minutes.
 
----
+## Live with a webcam
 
-## **Troubleshooting**
+```powershell
+python main.py
+```
 
-1. **No Camera Detected**: Ensure that your webcam is properly connected and that you've granted permission for the camera to be used by the program.
-2. **TTS Audio Issues**: If you're not hearing the text-to-speech output:
-   - Ensure you have an active internet connection (if you are using, e.g., gTTS).
-   - Verify that your audio system is working and correctly configured.
-   - pyttsx3 is blocking the program. Think about running it in a thread.
-3. **Performance Issues**: If the program runs slowly:
-   - Close unnecessary programs that might be using system resources.
+Stand about 3 m from the camera next to a chair, fully in view, and stand still until
+calibration is done. The session then runs by itself. Keys: `c` recalibrate, `n` next
+exercise (testing), `d` debug panel, `m` marker in the test log, `q` quit.
 
-For further troubleshooting you can check the official [mediapipe documentation](https://developers.google.com/edge/mediapipe/framework/getting_started/troubleshooting)
+## Code structure
 
----
+| File | Contents |
+|---|---|
+| `main.py` | Live sense-think-act loop with the webcam |
+| `simulate.py` | One simulated session: log + timeline figure |
+| `evaluate.py` | Rule vs HMM policy over many simulated sessions |
+| `coach/config.py` | All thresholds, timings, phrases, HMM and simulation parameters |
+| `coach/Features.py` | What Sense measures in one frame (also produced by the simulation) |
+| `coach/Sense.py` | MediaPipe landmarks -> angles, hip drop, foot lift, sway, lean; calibration |
+| `coach/Exercises.py` | Sit-to-stand and single-leg balance trackers (reps, holds, adherence events) |
+| `coach/Think.py` | Balance level, exercise-flow state machine, call to the policy, cooldowns |
+| `coach/Policy.py` | Actions, the Observation given to a policy, the rule policy |
+| `coach/Belief.py` | HMM over the user's state (forward algorithm) and the belief policy |
+| `coach/LiveView.py` | Live view / video of a simulated session (drawing only) |
+| `coach/Collaboration.py` | The robot's own wobble and its reaction to the user's encouragement |
+| `coach/Simulation.py` | Simulated user (hidden state, movement, sensor noise, encouraging the robot), session runner, metrics |
+| `coach/Phrases.py` | What the robot says for each action (from `config.PHRASES`) |
+| `coach/Act.py` | Camera view, robot message bar, debug panel |
+| `coach/TestLog.py` | Temporary per-frame CSV log of the live app |
+
+Logs and figures go in `data/`, which is not committed.
+
+The simulation does not need MediaPipe or a camera; only the live app does. The code
+follows PEP 8 with lines of up to 99 characters (`setup.cfg`); check it with
+`pip install pycodestyle` and `python -m pycodestyle main.py simulate.py evaluate.py coach`.

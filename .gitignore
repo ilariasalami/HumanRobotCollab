@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project: participant logs and recordings never go in the repo
+data/
+*.csv
+*.mp4
+
+# Notes for Claude Code (kept locally, not part of the delivery)
+CLAUDE.md

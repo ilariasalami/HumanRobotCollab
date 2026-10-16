@@ -1,104 +1,345 @@
+"""Think component: decides what the robot does. No camera code and no drawing here.
+
+Three parts:
+- balance_level() / BalanceFilter: turn the sway and lean numbers from Sense into a
+  discrete balance level that has lasted long enough to react to.
+- The exercise-flow state machine (transitions library):
+  calibrate -> demo -> doing -> (demo of the next exercise ...) -> done.
+  The exercise and its version (normal / simplified) are attributes, not states.
+- Each frame while 'doing', a small discrete Observation goes to the policy
+  (Policy.RulePolicy), which answers with one Action. Think applies cooldowns and
+  carries out the effect of the action on the flow (e.g. switching to the simplified
+  version).
+"""
+
+from dataclasses import dataclass, field
+
 from transitions import Machine
-import collections
+
+from coach import config
+from coach.Exercises import SitToStand, SingleLegBalance
+from coach.Policy import Action, Observation, PRIORITY, RulePolicy
 
 
-# Think Component: Decision Making
-# Things you need to improve: Add states and transitions according to your intervention/rehabilitation coaching design
+LOW, MODERATE, HIGH = 'low', 'moderate', 'high'
 
-class Think(object):
+# Tracker class for each name in config.EXERCISE_ORDER
+EXERCISES = {cls.name: cls for cls in (SitToStand, SingleLegBalance)}
 
-    def __init__(self, act_component, flexion_threshold=90, extension_threshold=120):
+# Events that mean the program is not followed, in the order used to pick the
+# robot's wording when several happen in the same frame.
+LOW_ADHERENCE_EVENTS = ('partial_rep', 'hold_broken', 'inactive', 'too_slow')
+
+# Robot actions about the user's safety: the robot does not wobble shortly after these.
+SAFETY_ACTIONS = (Action.REASSURE_SLOW, Action.REASSURE_HOLD, Action.SIMPLIFY, Action.REST)
+
+# Longest time step counted by the BalanceFilter, so a pause in the camera stream
+# does not count as seconds of instability.
+MAX_FRAME_GAP_S = 0.25
+
+
+def balance_level(features):
+    """Discretise balance into 'low' / 'moderate' / 'high' (amount of instability).
+
+    The level is the worst of two signals, both relative to calibration:
+    sway above baseline and sideways trunk lean. Returns None when not available
+    (not calibrated or body not visible).
+    """
+    if not features.valid or features.sway_excess is None or features.lean_excess is None:
+        return None
+
+    def level(value, moderate, high):
+        if value >= high:
+            return HIGH
+        if value >= moderate:
+            return MODERATE
+        return LOW
+
+    levels = [
+        level(features.sway_excess, config.SWAY_MODERATE, config.SWAY_HIGH),
+        level(features.lean_excess, config.LEAN_MODERATE_DEG, config.LEAN_HIGH_DEG),
+    ]
+    for candidate in (HIGH, MODERATE):
+        if candidate in levels:
+            return candidate
+    return LOW
+
+
+class BalanceFilter:
+    """Reports a balance level only after it has lasted (config.BALANCE_*_SUSTAIN_S).
+
+    Frames without a level (None, e.g. just after a foot is lifted) are ignored: they
+    neither count as unstable nor reset the timers.
+    """
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.moderate_s = 0.0   # how long the level has been moderate or worse
+        self.high_s = 0.0       # how long the level has been high
+        self.last_t = None
+
+    def update(self, level, t):
+        """:param level: balance_level() of this frame
+        :return: the sustained level: 'low', 'moderate' or 'high'"""
+        dt = 0.0 if self.last_t is None else min(t - self.last_t, MAX_FRAME_GAP_S)
+        self.last_t = t
+        if level == HIGH:
+            self.moderate_s += dt
+            self.high_s += dt
+        elif level == MODERATE:
+            self.moderate_s += dt
+            self.high_s = 0.0
+        elif level == LOW:
+            self.moderate_s = 0.0
+            self.high_s = 0.0
+
+        if self.high_s >= config.BALANCE_HIGH_SUSTAIN_S:
+            return HIGH
+        if self.moderate_s >= config.BALANCE_MODERATE_SUSTAIN_S:
+            return MODERATE
+        return LOW
+
+
+@dataclass
+class ThinkOutput:
+    """Everything Think decided in one frame. Act draws it, main logs it."""
+    state: str                      # flow state: 'calibrate', 'demo', 'doing', 'done'
+    exercise: str = None            # current exercise name (None in 'calibrate' and 'done')
+    simplified: bool = False
+    status: object = None           # ExerciseStatus of the tracker while 'doing'
+    balance: str = None             # balance level of this frame (can flicker)
+    balance_sustained: str = None   # balance level that has lasted, the one the policy sees
+    action: Action = Action.NONE    # robot action that starts in this frame
+    cue: str = None                 # what the action is about, used by Act to pick the words
+    robot_wobbling: bool = False    # the robot is wobbling itself (Collaboration.py)
+    events: list = field(default_factory=list)  # tracker events and state changes, for logging
+
+
+class Think:
+    """Exercise-flow state machine plus the call to the policy."""
+
+    STATES = ['calibrate', 'demo', 'doing', 'done']
+
+    def __init__(self, policy=None, robot_wobble=None):
+        """:param policy: object with reset() and decide(Observation), default RulePolicy
+        :param robot_wobble: Collaboration.RobotWobble, or None: the robot never wobbles"""
+        self.policy = policy or RulePolicy()
+        self.robot_wobble = robot_wobble
+        self.was_encouraging = False    # user_encourages in the previous frame
+        self.encouraged_now = False     # the user started encouraging in this frame
+        self.exercise_index = 0
+        self.simplified = False
+        self.tracker = None
+        self.demo_until = None
+        self.balance_filter = BalanceFilter()
+        self.invalid_since = None       # when the body went out of view
+        self.pending = []               # flow messages waiting: (not before t, Action, cue)
+        self.last_fired = {}            # Action -> time it was last given (cooldowns)
+        self.last_message_t = None
+        self.last_message_action = Action.NONE
+
+        # The triggers get a keyword argument t (time) that is passed on to the
+        # on_enter_<state> methods below.
+        self.machine = Machine(model=self, states=Think.STATES, initial='calibrate', transitions=[
+            {'trigger': 'calibrated', 'source': 'calibrate', 'dest': 'demo'},
+            {'trigger': 'demo_finished', 'source': 'demo', 'dest': 'doing'},
+            {'trigger': 'simplify_exercise', 'source': 'doing', 'dest': 'demo'},
+            {'trigger': 'advance', 'source': ['demo', 'doing'], 'dest': 'demo'},
+            {'trigger': 'complete', 'source': ['demo', 'doing'], 'dest': 'done'},
+            {'trigger': 'restart_calibration', 'source': '*', 'dest': 'calibrate'},
+        ])
+        self.pending.append((float('-inf'), Action.INSTRUCT, 'calibrate'))
+
+    # ------------------------------------------------------------------
+    # State entry (called by the transitions library)
+    # ------------------------------------------------------------------
+    def on_enter_calibrate(self, t, **kwargs):
+        self.tracker = None
+        self.pending = [(t, Action.INSTRUCT, 'calibrate')]
+
+    def on_enter_demo(self, t, lead=0.0, announce=True, **kwargs):
+        """:param lead: pause before the instruction (after finishing an exercise)
+        :param announce: False when another message already explains the exercise"""
+        self.tracker = None
+        self.balance_filter.reset()
+        self.demo_until = t + lead + config.DEMO_S
+        self.pending = []
+        if announce:
+            self.pending.append((t + lead, Action.INSTRUCT, 'demo'))
+
+    def on_enter_doing(self, t, **kwargs):
+        self.tracker = EXERCISES[self.exercise_name](self.simplified, t)
+        self.balance_filter.reset()
+        self.policy.reset()
+
+    def on_enter_done(self, t, lead=0.0, **kwargs):
+        self.tracker = None
+        self.pending = [(t + lead, Action.INSTRUCT, 'done')]
+
+    # ------------------------------------------------------------------
+    # Called from the main loop
+    # ------------------------------------------------------------------
+    @property
+    def exercise_name(self):
+        return config.EXERCISE_ORDER[self.exercise_index]
+
+    def recalibrate(self, t):
+        """The user asked for a new calibration (key c). The current exercise starts
+        again afterwards; after a finished session the whole session starts again."""
+        if self.state == 'done':
+            self.exercise_index = 0
+            self.simplified = False
+        self.restart_calibration(t=t)
+
+    def skip_exercise(self, t):
+        """Testing aid (key n): go to the next exercise without finishing this one."""
+        if self.state in ('demo', 'doing'):
+            self._next_exercise(t, lead=0.0)
+
+    def step(self, features, t):
+        """One think step.
+
+        :param features: Features from Sense
+        :param t: time in seconds
+        :return: ThinkOutput
         """
-        Initializes the state machine and sets up the transition logic.
-        :param act_component: Reference to the Act component to trigger visual feedback
-        :param flexion_threshold: threshold for entering the flexion state
-        :param extension_threshold: threshold for entering the extension state
-        """
+        state_before = self.state
+        out = ThinkOutput(state=self.state, balance=balance_level(features))
 
+        # Tracking counts as lost only after the body has been out of view for a while
+        if features.valid:
+            self.invalid_since = None
+        elif self.invalid_since is None:
+            self.invalid_since = t
+        tracking_ok = self.invalid_since is None or t - self.invalid_since < config.TRACKING_LOST_S
 
-        # Define initial state and thresholds for transitions
-        self.state = 'flexion'  # Initial state
-        self.previous_state = self.state
-        self.flexion_threshold = flexion_threshold  # Elbow angle threshold for flexion
-        self.extension_threshold = extension_threshold  # Elbow angle threshold for extension
+        # Encouragement is heard for a moment; only its start counts as an event
+        self.encouraged_now = features.user_encourages and not self.was_encouraging
+        self.was_encouraging = features.user_encourages
 
-        # Transition counter
-        self.flexion_to_extension_count = 0  # Count transitions from flexion to extension
-        self.extension_to_flexion_count = 0  # Count transitions from extension to flexion
+        if self.state == 'calibrate':
+            if features.calibrated:
+                self.calibrated(t=t)
 
-        # Act component for visualization
-        self.act_component = act_component
+        elif self.state == 'demo':
+            if not tracking_ok:
+                self._fire(out, Action.TRACKING_LOST, None, t)
+            if t >= self.demo_until:
+                self.demo_finished(t=t)
 
-        # Define the state machine with states 'flexion' and 'extension'
-        states = ['flexion', 'extension']
+        elif self.state == 'doing':
+            self._step_doing(out, features, tracking_ok, t)
 
-        # Initialize the state machine
-        self.machine = Machine(model=self, states=states, initial='flexion')
+        if self.robot_wobble is not None:
+            self._step_robot_wobble(out, t)
 
-        # Define transitions
-        self.machine.add_transition(trigger='angle_decreasing', source='extension', dest='flexion',
-                                    after='increment_ext_to_flexion')
-        # conditions='is_flexion_threshold_reached',
+        # Flow messages (instructions) wait until nothing else is said in this frame
+        if out.action is Action.NONE and self.pending and t >= self.pending[0][0]:
+            _, action, cue = self.pending.pop(0)
+            self._give(out, action, cue, t)
 
-        self.machine.add_transition(trigger='angle_increasing', source='flexion', dest='extension',
-                                    after='increment_flexion_to_extension')
-        # conditions='is_extension_threshold_reached',
+        out.state = self.state
+        if self.state in ('demo', 'doing'):
+            out.exercise = self.exercise_name
+            out.simplified = self.simplified
+        if self.state != state_before:
+            out.events.append(f'state:{state_before}->{self.state}')
+        return out
 
-    # Condition for transition to 'flexion' state
-    def is_flexion_threshold_reached(self, angle):
-        """
-        Checks if the flexion threshold has been reached to trigger a state change.
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+    def _step_doing(self, out, features, tracking_ok, t):
+        status = self.tracker.update(features, t)
+        out.status = status
+        out.events += status.events
+        out.balance_sustained = self.balance_filter.update(out.balance, t)
 
-        :param angle: The current elbow angle
-        :return: True if flexion threshold is reached, False otherwise
-        """
-        return angle < self.flexion_threshold # Flexion is detected when the elbow is bent
+        if 'switch_leg' in status.events:
+            self.pending.append((t, Action.INSTRUCT, 'switch_leg'))
 
-    # Condition for transition to 'extension' state
-    def is_extension_threshold_reached(self, angle):
-        """
-                 Checks if the extension threshold has been reached to trigger a state change.
+        if status.done:
+            # Finished: praise now, the next instruction follows after a short pause
+            self._give(out, Action.PRAISE, 'exercise_done', t)
+            self._next_exercise(t, lead=config.BETWEEN_EXERCISES_S)
+            return
 
-                 :param angle: The current elbow angle
-                 :return: True if extension threshold is reached, False otherwise
-                 """
-        return angle > self.extension_threshold # Extension is detected when the elbow is almost straight
+        # What the policy is allowed to know
+        if 'rep_done' in status.events and 'too_fast' in status.events:
+            execution = 'poor'
+        elif status.execution_good:
+            execution = 'good'
+        else:
+            execution = None
+        observation = Observation(
+            t=t,
+            tracking_ok=tracking_ok,
+            exercise=self.exercise_name,
+            simplified=self.simplified,
+            balance=out.balance_sustained,
+            balance_now=out.balance,
+            adherence='low' if status.adherence_low else 'ok',
+            execution=execution,
+            user_encouraged=self.encouraged_now,
+        )
+        action = self.policy.decide(observation)
 
-    # Method to update the FSM state based on the current elbow angle
-    def update_state(self, current_angle, previous_angle):
-        """
-        Updates the state machine based on the current angle (flexion or extension).
+        cue = None
+        if action is Action.MOTIVATE:
+            cue = next((e for e in LOW_ADHERENCE_EVENTS if e in status.events), None)
+        if not self._fire(out, action, cue, t):
+            return
 
-        :param current_angle: The current elbow joint angle (in degrees)
-        :param previous_angle: The previous elbow joint angle (in degrees)
-        """
+        # Effects of the action on the flow
+        if action is Action.SIMPLIFY:
+            self.simplified = True
+            # The SIMPLIFY message itself explains the easier version
+            self.simplify_exercise(t=t, announce=False)
+        elif action is Action.REST:
+            out.events += self.tracker.interrupt(t)
+            self.balance_filter.reset()
 
-        # Check if the angle is decreasing and we're in the extension state
-        if current_angle < previous_angle and self.state == 'extension':
-            if self.is_flexion_threshold_reached(current_angle):
-                self.angle_decreasing()
+    def _step_robot_wobble(self, out, t):
+        """The robot's own wobble and its reaction to the user's encouragement."""
+        recent_safety = any(
+            t - self.last_fired.get(a, float('-inf')) < config.ROBOT_WOBBLE_SAFE_GAP_S
+            for a in SAFETY_ACTIONS)
+        safe = not recent_safety and out.balance in (LOW, None)
+        action = self.robot_wobble.step(t, exercising=self.state == 'doing', safe=safe,
+                                        encouraged=self.encouraged_now,
+                                        free=out.action is Action.NONE)
+        if action is not Action.NONE:
+            self._give(out, action, None, t)
+        out.robot_wobbling = self.robot_wobble.wobbling
 
-        # Check if the angle is increasing and we're in the flexion state
-        elif current_angle > previous_angle and self.state == 'flexion':
-            if self.is_extension_threshold_reached(current_angle):
-                self.angle_increasing()
+    def _next_exercise(self, t, lead):
+        if self.exercise_index + 1 < len(config.EXERCISE_ORDER):
+            self.exercise_index += 1
+            self.simplified = False
+            self.advance(t=t, lead=lead)
+        else:
+            self.complete(t=t, lead=lead)
 
-        # Debug: Print the current state and transition counts
-        # print(f"Elbow Angle: {current_angle}, State: {self.state}")
-        # print(f"Transitions - Flexion to Extension: {self.flexion_to_extension_count}, "
-        #       f"Extension to Flexion: {self.extension_to_flexion_count}")
+    def _fire(self, out, action, cue, t):
+        """Give a policy action if its cooldown and the minimum gap allow it.
+        :return: True if the action was given"""
+        if action is Action.NONE:
+            return False
+        cooldown = config.ACTION_COOLDOWN_S.get(action.name, 0.0)
+        if action in self.last_fired and t - self.last_fired[action] < cooldown:
+            return False
+        if (self.last_message_t is not None
+                and t - self.last_message_t < config.ACTION_MIN_GAP_S
+                and PRIORITY[action] <= PRIORITY[self.last_message_action]):
+            return False
+        self._give(out, action, cue, t)
+        return True
 
-    # Methods to increment transition counters (no arguments needed)
-    def increment_flexion_to_extension(self):
-        """
-        Callback when transitioning from flexion to extension. Increments the repetition count.
-        """
-        self.flexion_to_extension_count += 1
-        self.act_component.handle_balloon_inflation() # Inflate the balloon
-
-    def increment_ext_to_flexion(self):
-        """
-        Callback when transitioning from extension to flexion.
-        """
-        self.extension_to_flexion_count += 1
-        self.act_component.handle_balloon_inflation() # Reset timeout trigger
+    def _give(self, out, action, cue, t):
+        out.action = action
+        out.cue = cue
+        self.last_fired[action] = t
+        self.last_message_t = t
+        self.last_message_action = action

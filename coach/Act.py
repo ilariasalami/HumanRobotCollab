@@ -1,174 +1,187 @@
 # Act Component: Provide feedback to the user
 
+from collections import deque
+
 import cv2
 import numpy as np
-import random
-import pyttsx3
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.vision import drawing_styles, drawing_utils
 
+from coach import config
+from coach.Policy import Action
+from coach.Phrases import phrase_for
 
-# Act Component: Visualization to motivate user, visualization such as the skeleton and debugging information.
-# Things to add: Other graphical visualization, a proper GUI, more verbal feedback
+
+WHITE = (255, 255, 255)
+GREY = (160, 160, 160)
+GREEN = (80, 200, 80)
+ORANGE = (0, 165, 255)
+RED = (60, 60, 230)
+DARK = (30, 30, 30)
+LEVEL_COLORS = {'low': GREEN, 'moderate': ORANGE, 'high': RED}
+ACTION_COLORS = {
+    Action.PRAISE: GREEN,
+    Action.REASSURE_SLOW: ORANGE,
+    Action.REASSURE_HOLD: ORANGE,
+    Action.SIMPLIFY: RED,
+    Action.REST: RED,
+    Action.TRACKING_LOST: RED,
+}
+
+# How long events stay visible in the debug panel (seconds)
+EVENT_DISPLAY_S = 4.0
+
+
+def fmt(value, digits=1):
+    """Format a number for display, '-' when it is not available."""
+    return '-' if value is None else f'{value:.{digits}f}'
+
+
+# Act Component: everything the user sees and hears. Contains no decision logic.
 class Act:
 
     def __init__(self):
-        # Balloon size and transition tracking for visualization
-        self.balloon_size = 50
-        self.transition_count = 0
-        self.max_transitions = 10  # Explodes after 10 transitions
-        self.exploded = False  # Track whether the balloon exploded
-        self.explosion_fragments = []  # Store explosion fragments
-        self.explosion_frame_count = 0  # Frame counter for explosion duration
-        self.explosion_duration = 30  # Number of frames to show explosion effect
-        self.engine = pyttsx3.init()
+        self.show_debug = True
+        self.recent_events = deque()    # (t, text), only for the debug panel
+        self.message = None             # (text, color, shown until t): current robot message
+        self.last_action = Action.NONE
 
-        self.motivating_utterances = ['keep on going', 'you are doing great. I see it', 'only a few left', 'that is awesome', 'you have almost finished the exercise']
-        # Handles balloon inflation and reset after explosion
+    def toggle_debug(self):
+        self.show_debug = not self.show_debug
 
-    def handle_balloon_inflation(self):
+    def update(self, frame, features, output):
+        """Draw the camera view (with skeleton), the robot message and the debug panel.
+
+        :param features: Features from Sense
+        :param output: ThinkOutput from Think
+        :return: the text of the robot message that started in this frame, or None
         """
-        Increases the size of the balloon with each successful repetition.
-        """
-        if not self.exploded:  # Only inflate if balloon hasn't exploded
+        t = features.t
+        for event in output.events:
+            self.recent_events.append((t, event))
+        while self.recent_events and t - self.recent_events[0][0] > EVENT_DISPLAY_S:
+            self.recent_events.popleft()
 
-            self.transition_count += 1
-            self.balloon_size += 10  # Inflate balloon by 10 units per transition
+        # A new action replaces the message on screen (Think already decided that it may)
+        new_text = None
+        if output.action is not Action.NONE:
+            new_text = phrase_for(output.action, output.cue, output.exercise, output.simplified)
+            color = ACTION_COLORS.get(output.action, WHITE)
+            self.message = (new_text, color, t + config.MESSAGE_DISPLAY_S)
+            self.last_action = output.action
+        if self.message and t > self.message[2]:
+            self.message = None
 
-            text = random.choice(self.motivating_utterances)
-            self.engine.say("%s %s" % (self.transition_count, text))
-            self.engine.runAndWait() # This is a blocking call. You need to run it in a thread.
-
-            # Check if balloon should explode
-
-            if self.transition_count >= self.max_transitions:
-                self.explode_balloon()
-
-    def explode_balloon(self):
-        """
-        Handles the visual effect of the balloon exploding.
-        """
-
-        self.exploded = True  # Mark the balloon as exploded
-        self.create_explosion_fragments()  # Generate the explosion fragments
-        self.engine.say("boooom booooom booom")
-        self.engine.runAndWait()
-
-    def reset_balloon(self):
-        """
-        Resets the balloon after it explodes.
-        """
-
-        self.transition_count = 0
-        self.balloon_size = 50  # Reset balloon size
-        self.exploded = False  # Reset explosion state
-        self.explosion_frame_count = 0  # Reset the explosion frame counter
-        self.explosion_fragments.clear()  # Clear the fragments after explosion
-
-        self.engine.say("You did great! Let's reset the balloon.")
-        self.engine.runAndWait()
-        # Create explosion fragments with random sizes and positions
-
-    def create_explosion_fragments(self):
-        # Generate random "fragments" for explosion effect
-        for _ in range(20):
-            fragment = {
-                'position': (random.randint(200, 300), random.randint(200, 400)),
-                'size': random.randint(5, 15),
-                'color': (0, 0, 255),  # Red fragments
-                'dx': random.randint(-10, 10),  # X-direction movement
-                'dy': random.randint(-10, 10)  # Y-direction movement
-            }
-            self.explosion_fragments.append(fragment)
-
-        # Visualization of the balloon and explosion in OpenCV
-
-    def visualize_balloon(self):
-        """
-        Renders the balloon .
-        """
-
-        # Create a black background
-        img = np.zeros((500, 500, 3), dtype=np.uint8)
-
-        if not self.exploded:
-            # Draw the balloon (a circle) with dynamic size if it hasn't exploded
-            cv2.circle(img, (250, 300), self.balloon_size, (0, 0, 255), -1)  # Red balloon
-        else:
-            # Draw explosion fragments if balloon has exploded
-            for fragment in self.explosion_fragments:
-                x, y = fragment['position']
-                size = fragment['size']
-                color = fragment['color']
-
-                # Move fragments in random directions
-                x += fragment['dx']
-                y += fragment['dy']
-                fragment['position'] = (x, y)
-
-                # Draw each fragment as a small circle
-                cv2.circle(img, (x, y), size, color, -1)
-
-            self.explosion_frame_count += 1
-
-            # Reset the balloon after the explosion effect finishes
-            if self.explosion_frame_count >= self.explosion_duration:
-                self.reset_balloon()
-
-        cv2.putText(img, f'Repeat flexing/bending your left arm to pop the balloon!', (0, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, .55, (255, 255, 255), 2, cv2.LINE_AA)
-
-        # Add transition count and text
-        cv2.putText(img, f'Repetitions: {self.transition_count}', (150, 100),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(img, f'Balloon Size: {self.balloon_size}', (150, 150),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-
-        # Show the image in the window
-        cv2.imshow('Flex and bend your left elbow!', img)
-
-        # Wait for 1 ms and check if the window should be closed
-        cv2.waitKey(1)
-
-    def provide_feedback(self, decision, frame, joints, elbow_angle_mvg):
-        """
-        Displays the skeleton and some text using open cve.
-
-        :param decision: The decision in which state the user is from the think component.
-        :param frame: The currently processed frame form the webcam.
-        :param joints: The joints extracted from mediapipe from the current frame.
-        :param elbow_angle_mvg: The moving average from the left elbow angle.
-
-        """
-
-        if joints.pose_landmarks:
+        if features.landmarks is not None:
             drawing_utils.draw_landmarks(
                 frame,
-                joints.pose_landmarks[0],
+                features.landmarks,
                 vision.PoseLandmarksConnections.POSE_LANDMARKS,
                 drawing_styles.get_default_pose_landmarks_style(),
             )
+        if config.MIRROR_DISPLAY:
+            frame = cv2.flip(frame, 1)  # flip after drawing so text is not mirrored
 
-        # Define the number and text to display
-        number = elbow_angle_mvg
-        text = " "
-        if decision == 'flexion':
-            text = "You are flexing your elbow! %s" % number
-        elif decision == 'extension':
-            text = "You are extending your elbow! %s" % number
+        self._draw_header(frame, features, output)
+        if self.message:
+            self._draw_message(frame, self.message[0], self.message[1])
 
+        if self.show_debug:
+            panel = self._debug_panel(features, output, frame.shape[0])
+            frame = np.hstack([frame, panel])
 
-        # Set the position, font, size, color, and thickness for the text
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = .9
-        font_color = (0, 0, 0)  # White color in BGR
-        thickness = 2
+        cv2.imshow(config.WINDOW_NAME, frame)
+        return new_text
 
-        # Define the position for the number and text
-        text_position = (50, 50)
+    def _draw_header(self, frame, features, output):
+        """Top of the camera image: where we are in the session."""
+        def text(line, y, scale=0.8, color=WHITE, thickness=2):
+            cv2.putText(frame, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness,
+                        cv2.LINE_AA)
 
-        # Draw the text on the image
-        cv2.putText(frame, text, text_position, font, font_scale, font_color, thickness)
+        if output.state == 'calibrate':
+            text('Calibrating', 40)
+            w = frame.shape[1]
+            x0, y0, x1, y1 = 20, 60, w - 20, 85
+            cv2.rectangle(frame, (x0, y0), (x1, y1), WHITE, 2)
+            filled = int(x0 + (x1 - x0) * features.calib_progress)
+            cv2.rectangle(frame, (x0, y0), (filled, y1), GREEN, -1)
+            return
+        if output.state == 'done':
+            text('Session finished', 40)
+            return
 
-        # Display the frame (for debugging purposes)
-        cv2.imshow('Sport Coaching Program', frame)
+        name = output.exercise.replace('_', ' ')
+        if output.simplified:
+            name += ' (simplified)'
+        if output.state == 'demo':
+            text('Get ready: ' + name, 40)
+        elif output.status is not None:
+            text(name, 40)
+            text(output.status.progress_text, 80, scale=0.9)
+            if output.status.countdown is not None:
+                text(f'{output.status.countdown:.0f}', 160, scale=2.5, color=GREEN, thickness=4)
+
+    def _draw_message(self, frame, message, color):
+        """Robot message in a dark box at the bottom of the camera image, word-wrapped."""
+        h, w = frame.shape[:2]
+        font, scale, thickness, line_h = cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2, 30
+        lines, line = [], ''
+        for word in message.split():
+            candidate = f'{line} {word}'.strip()
+            if line and cv2.getTextSize(candidate, font, scale, thickness)[0][0] > w - 40:
+                lines.append(line)
+                line = word
+            else:
+                line = candidate
+        lines.append(line)
+
+        top = h - line_h * len(lines) - 20
+        cv2.rectangle(frame, (0, top), (w, h), DARK, -1)
+        for i, text in enumerate(lines):
+            cv2.putText(frame, text, (20, top + 30 + i * line_h), font, scale, color, thickness,
+                        cv2.LINE_AA)
+
+    def _debug_panel(self, f, output, height):
+        panel = np.zeros((height, 340, 3), dtype=np.uint8)
+        status = output.status
+        lines = []
+
+        if f.valid:
+            lines.append(('tracking OK', GREEN))
+        else:
+            lines.append(('cannot see: ' + ', '.join(f.missing), RED))
+        lines.append((f'calibrated: {f.calibrated}  ({f.calib_progress:.0%})', WHITE))
+        lines.append((f'knee  L {fmt(f.knee_l, 0):>4} R {fmt(f.knee_r, 0):>4}', WHITE))
+        lines.append((f'hip   L {fmt(f.hip_l, 0):>4} R {fmt(f.hip_r, 0):>4}', WHITE))
+        lines.append((f'torso ratio  {fmt(f.torso_ratio, 2)}', WHITE))
+        lines.append((f'hip drop     {fmt(f.hip_drop, 2)}', WHITE))
+        lines.append((f'foot lift    {fmt(f.foot_lift, 2)}  ({f.lifted_foot or "-"})', WHITE))
+        lines.append((f'sway excess  {fmt(f.sway_excess, 3)}  (base {fmt(f.sway_baseline, 3)})',
+                      WHITE))
+        lines.append((f'trunk lean   {fmt(f.trunk_lean)}  (excess {fmt(f.lean_excess)})', WHITE))
+        lines.append((f'BALANCE      {output.balance or "-"}',
+                      LEVEL_COLORS.get(output.balance, WHITE)))
+        lines.append((f'  lasting    {output.balance_sustained or "-"}',
+                      LEVEL_COLORS.get(output.balance_sustained, WHITE)))
+        lines.append(('', WHITE))
+
+        lines.append((f'FLOW STATE   {output.state}', WHITE))
+        if output.exercise:
+            lines.append((f'{output.exercise}{" (simpl.)" if output.simplified else ""}', WHITE))
+        if status is not None:
+            lines.append((f'phase        {status.phase}', WHITE))
+            lines.append((f'progress     {status.progress_text}  ({status.progress:.0%})', WHITE))
+            lines.append((f'adherence    {status.adherence:.2f}', WHITE))
+        lines.append((f'last action  {self.last_action.name}',
+                      ACTION_COLORS.get(self.last_action, WHITE)))
+        lines.append(('events: ' + ' '.join(e for _, e in self.recent_events), ORANGE))
+        lines.append(('', WHITE))
+
+        lines.append(('c recalibrate  n next exercise (test)', GREY))
+        lines.append(('d debug  m marker in test log  q quit', GREY))
+
+        for i, (text, color) in enumerate(lines):
+            cv2.putText(panel, text, (10, 22 + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1,
+                        cv2.LINE_AA)
+        return panel

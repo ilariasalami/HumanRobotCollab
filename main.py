@@ -1,86 +1,91 @@
+import time
+
 import cv2
-import mediapipe as mp
+
+from coach import config
 from coach import Sense
 from coach import Think
 from coach import Act
-
-import numpy as np
+from coach import TestLog
+from coach.Policy import Action
 
 
 # Main Program Loop
 def main():
     """
-    Main function to initialize the exercise tracking application.
+    Main function of the osteoporosis coach: the sense-think-act loop.
 
-    This function sets up the webcam feed, initializes the Sense, Think, and Act components,
-    and starts the main loop to continuously process frames from the webcam.
+    Step 3 (current): Sense -> Think (exercise flow + rule policy) -> Act (text only).
+    Robot display, speech and the study Logger come in the next steps.
     """
 
-    
-    # Initialize the components: Sense for input, Think for decision-making, Act for output
     sense = Sense.Sense()
+    think = Think.Think()
     act = Act.Act()
-    think = Think.Think(act)
-
+    # Temporary: one CSV row per frame in data/, for tuning thresholds
+    test_log = TestLog.TestLog()
 
     # Search and print available camera devices (may take a while to complete)
-    #searchValidCameraIndexes()
-    
-    # Initialize the webcam capture
-    cap = cv2.VideoCapture(0)  # Use the default camera (0) or change to a different index if multiple cameras are connected to system
+    # searchValidCameraIndexes()
 
-    # Main loop to process video frames
+    cap = cv2.VideoCapture(config.CAMERA_INDEX)
+    start_t = None
+    previous = ('calibrate', None)   # flow state and exercise of the previous frame, for the log
+
     while cap.isOpened():
 
-        # Capture frame-by-frame from the webcam
         ret, frame = cap.read()
         if not ret:
             print("Failed to grab frame")
             break
+        t = time.monotonic()
+        if start_t is None:
+            start_t = t
 
-        # Sense: Detect joints
-        joints = sense.detect_joints(frame)
-        landmarks = joints.pose_landmarks[0] if joints.pose_landmarks else None
+        # Sense: landmarks -> angles, heights, sway (and calibration at the start)
+        features = sense.process(frame, t)
 
-        # If landmarks are detected, calculate the elbow angle
-        if landmarks:
-            # Extract joint coordinates for the left arm
-            # For this example, we will use specific landmark indexes for shoulder, elbow, and wrist
-            shoulder = sense.extract_joint_coordinates(landmarks, 'left_shoulder')
-            elbow = sense.extract_joint_coordinates(landmarks, 'left_elbow')
-            wrist = sense.extract_joint_coordinates(landmarks, 'left_wrist')
+        # Think: exercise flow, balance level, and the robot action chosen by the policy
+        output = think.step(features, t)
 
-            # Calculate the elbow angle
-            elbow_angle_mvg = sense.calculate_angle(shoulder, elbow, wrist)
+        # Act: show the camera view, the robot message and the measured values
+        message = act.update(frame, features, output)
 
-            # Think: Next, give the angles to the decision-making component and make decisions based on joint data
-            think.update_state(elbow_angle_mvg, sense.previous_angle)
+        # Log state changes, tracker events and robot actions (terminal + test log)
+        # Events belong to the state they happened in, i.e. the one before a state change
+        clock = f'{t - start_t:7.1f}s'
+        for event in output.events:
+            print(f'{clock}  {previous[0]:9} {previous[1] or "-":18} event   {event}')
+        if output.action is not Action.NONE:
+            print(f'{clock}  {output.state:9} {output.exercise or "-":18} '
+                  f'ROBOT   {output.action.name}: "{message}"')
+        previous = (output.state, output.exercise)
+        test_log.write(t, features, output)
 
-            # We'll save the previous angle for later comparison
-            sense.previous_angle = elbow_angle_mvg
-
-            decision = think.state
-
-            # Act: Provide feedback to the user.
-            act.provide_feedback(decision, frame=frame, joints=joints, elbow_angle_mvg=elbow_angle_mvg)
-            # Render the balloon visualization
-            act.visualize_balloon()
-
-            # think.check_for_timeout()
-
-        # Exit if the 'q' key is pressed
-        if cv2.waitKey(10) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key in (ord('c'), ord('n')):
+            test_log.note(f'key:{chr(key)}')
+        if key == ord('q'):
             break
+        elif key == ord('c'):
+            sense.start_calibration()
+            think.recalibrate(t)
+        elif key == ord('n'):
+            think.skip_exercise(t)
+        elif key == ord('d'):
+            act.toggle_debug()
+        elif key == ord('m'):
+            test_log.marker()
 
-    # Release the webcam and close all OpenCV windows
     cap.release()
     cv2.destroyAllWindows()
+    test_log.close()
 
 
 def searchValidCameraIndexes():
     # checks the first 10 indexes. May take a while to complete
-    
-    print(f"Searching available camera index nrs")
+
+    print("Searching available camera index nrs")
     valid_cams = []
     for i in range(10):
         cap = cv2.VideoCapture(i)
@@ -89,8 +94,9 @@ def searchValidCameraIndexes():
         else:
             print(f"Found valid video source: {i}")
             valid_cams.append(i)
-            
+
     print(f"Available camera index nrs: {valid_cams}")
+
 
 if __name__ == "__main__":
     main()
