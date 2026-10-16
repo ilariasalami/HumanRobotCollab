@@ -15,7 +15,9 @@ user may encourage it, which the robot hears as a verbal cue (Features.user_enco
 
 Noise in the measurements mimics what we saw in the webcam tests: hip and foot heights
 jitter, sway and lean jump to moderate/high for a few frames during normal movement,
-and the body is sometimes not detected for a moment.
+and the body is sometimes not detected for a moment (a glitch the robot should ignore).
+Now and then the user walks up to the laptop, e.g. to read the screen; the feet then leave
+the camera view and the robot asks the user to step back, which they do.
 
 run_session() runs one full session (sense -> think -> act) and returns one row per
 time step; summarize() turns those rows into the numbers used in the evaluation.
@@ -81,6 +83,9 @@ class SimulatedUser:
         self.flicker_until = -math.inf
         self.flicker = (0.0, 0.0)       # extra (sway, lean) during a flicker
         self.dropout_until = -math.inf
+        # Walking up to the laptop: None, or {'phase': 'to'/'away'/'back', 't0', 'back_at'}
+        self.walk = None
+        self.walk_frac = 0.0            # 0 at the exercise spot .. 1 at the laptop
         self.last_t = None
         self.dt = 0.0
 
@@ -97,12 +102,18 @@ class SimulatedUser:
         self.last_t = t
         self.dt = dt
         resting = t < self.rest_until
-        exercising = self.flow_state == 'doing' and not resting
+        self._update_walk(t, dt, resting)
+        walking = self.walk is not None
+        exercising = self.flow_state == 'doing' and not resting and not walking
 
         self._update_fatigue(dt, exercising)
         self._update_state(t, dt, exercising)
 
-        if self.flow_state == 'doing' and self.exercise == 'sit_to_stand':
+        if walking:
+            # Walking to the laptop and back: standing up, not exercising
+            self.drop, lift, moving = 0.0, 0.0, True
+            self.rep = self.lift = None
+        elif self.flow_state == 'doing' and self.exercise == 'sit_to_stand':
             moving = self._sit_to_stand(t, resting)
             lift = 0.0
         elif self.flow_state == 'doing' and self.exercise == 'single_leg_balance':
@@ -115,6 +126,33 @@ class SimulatedUser:
 
         sway, lean = self._balance_signals(t, dt, lift, moving, resting)
         return self._measure(t, lift, sway, lean)
+
+    def _update_walk(self, t, dt, resting):
+        """Now and then the user walks up to the laptop and later back to the exercise spot.
+        Half-way there the feet leave the camera view."""
+        w = self.walk
+        if w is None:
+            if (self.flow_state in ('demo', 'doing') and not resting
+                    and self._happens(config.SIM_WALK_AWAY_RATE, dt)):
+                self.walk = {'phase': 'to', 't0': t, 'back_at': math.inf}
+        elif w['phase'] == 'to':
+            if t - w['t0'] >= config.SIM_WALK_S:
+                w['phase'], w['t0'] = 'away', t
+        elif w['phase'] == 'away':
+            if t >= w['back_at'] or t - w['t0'] >= config.SIM_AWAY_MAX_S:
+                w['phase'], w['t0'] = 'back', t
+        elif t - w['t0'] >= config.SIM_WALK_S:
+            self.walk = None
+
+        w = self.walk
+        if w is None:
+            self.walk_frac = 0.0
+        elif w['phase'] == 'to':
+            self.walk_frac = (t - w['t0']) / config.SIM_WALK_S
+        elif w['phase'] == 'away':
+            self.walk_frac = 1.0
+        else:
+            self.walk_frac = 1.0 - (t - w['t0']) / config.SIM_WALK_S
 
     def _update_fatigue(self, dt, exercising):
         if exercising:
@@ -288,7 +326,8 @@ class SimulatedUser:
         encourages = self.encourage_from <= t < self.encourage_until
         if t >= self.dropout_until and self._happens(config.SIM_DROPOUT_RATE * self.noise, self.dt):
             self.dropout_until = t + self.rng.uniform(*config.SIM_DROPOUT_DURATION_S)
-        if t < self.dropout_until:
+        # Out of view: a detection glitch, or the feet left the camera view (near the laptop)
+        if t < self.dropout_until or self.walk_frac > 0.5:
             return Features(t=t, valid=False, missing=['ankles'], calibrated=calibrated,
                             calib_progress=1.0 if calibrated else t / CALIBRATION_S,
                             user_encourages=encourages)
@@ -339,6 +378,10 @@ class SimulatedUser:
             self.action_t[output.action.name] = t
             if output.action is Action.REST:
                 self.rest_until = t + config.SIM_REST_S
+            elif output.action is Action.TRACKING_LOST:
+                # Asked to step back into view: walk back after a reaction time
+                if self.walk and self.walk['phase'] in ('to', 'away'):
+                    self.walk['back_at'] = t + self.rng.uniform(*config.SIM_RETURN_DELAY_S)
             elif output.action is Action.ROBOT_WOBBLE:
                 # Cheer the robot on? Depends on how the user is doing themselves.
                 if self.rng.random() < config.SIM_ENCOURAGE_P[self.state]:
@@ -407,6 +450,7 @@ def run_session(policy='hmm', user='mixed', seed=0, noise=1.0, fps=10.0, max_s=6
             'p_engaged': belief[ENGAGED] if belief else None,
             'p_unmotivated': belief[UNMOTIVATED] if belief else None,
             'p_unstable': belief[UNSTABLE] if belief else None,
+            'walk': round(sim_user.walk_frac, 3),
             'robot_wobbling': output.robot_wobbling,
             'user_encourages': features.user_encourages,
             'events': '|'.join(output.events),

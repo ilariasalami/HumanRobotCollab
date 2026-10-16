@@ -59,7 +59,7 @@ Options:
 |---|---|
 | `--policy hmm` / `--policy rule` | HMM belief policy (default) or the fixed rules |
 | `--user mixed` | simulated user: `steady`, `mixed` (default), `shaky`, `unmotivated` |
-| `--seed 3` | random seed (default 3: a session where every robot action occurs); the same seed gives the same session |
+| `--seed 4` | random seed (default 4: a session where every key robot action occurs); the same seed gives the same session |
 | `--noise 1.0` | measurement noise multiplier |
 | `--fps 10` | simulated camera frame rate |
 | `--every-step` | print every time step |

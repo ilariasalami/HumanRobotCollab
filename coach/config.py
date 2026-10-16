@@ -339,6 +339,15 @@ SIM_FOOT_LIFT_NOISE = 0.015
 SIM_FLICKER_RATE_MOVING = 0.35
 SIM_FLICKER_RATE_STILL = 0.05
 SIM_FLICKER_DURATION_S = (0.15, 0.6)
-# Short moments where the body is not fully detected (rate per second, scaled by --noise).
+# Short detection glitches: the body is not detected for a moment although the user did
+# not move (rate per second, scaled by --noise). Shorter than TRACKING_LOST_S, so the
+# robot correctly does not react to them.
 SIM_DROPOUT_RATE = 0.01
-SIM_DROPOUT_DURATION_S = (0.3, 2.5)
+SIM_DROPOUT_DURATION_S = (0.2, 1.0)
+# The user walks up to the laptop (e.g. to read the screen): their feet leave the camera
+# view, the robot asks them to step back and they walk back. Rate per second during
+# instructions and exercises: on average about once every two sessions.
+SIM_WALK_AWAY_RATE = 0.004
+SIM_WALK_S = 1.5                        # walking time each way
+SIM_RETURN_DELAY_S = (1.0, 2.0)         # reaction time after the robot asks
+SIM_AWAY_MAX_S = 10.0                   # walks back by itself if the robot says nothing

@@ -63,6 +63,8 @@ LAPTOP_CX = 770
 SCREEN_BOX = (-95, -145, 95, -15)        # screen relative to the laptop hinge
 HINGE = (LAPTOP_CX, TABLE_Y - 8)
 FACE_OFFSET = (0, -82)                   # face centre relative to the hinge
+WALK_PX = 230                            # how far the user walks towards the laptop
+VIEW_FLOOR_X = ANKLE_X + WALK_PX // 2    # the camera view meets the floor here
 
 # Short banners for key moments: action -> (text, colour)
 BANNERS = {
@@ -175,6 +177,19 @@ class LiveView:
         d.rectangle((0, FLOOR_Y - 10, RW, FLOOR_Y), fill=(250, 248, 243))
         d.line((0, FLOOR_Y, RW, FLOOR_Y), fill=FLOOR_EDGE, width=2)
         d.ellipse((170, FLOOR_Y + 14, 520, FLOOR_Y + 54), fill=RUG)
+        # What the webcam sees: a wedge from the camera; close to the laptop the feet are
+        # outside it
+        overlay = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+        o = ImageDraw.Draw(overlay)
+        cam = (LAPTOP_CX, HINGE[1] + SCREEN_BOX[1] - 4)
+        o.polygon([cam, (0, 40), (0, FLOOR_Y), (VIEW_FLOOR_X, FLOOR_Y)],
+                  fill=(120, 170, 220, 20))
+        o.line([cam, (VIEW_FLOOR_X, FLOOR_Y)], fill=(120, 170, 220, 140), width=2)
+        o.line([cam, (0, 40)], fill=(120, 170, 220, 140), width=2)
+        img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
+        d = ImageDraw.Draw(img)
+        d.text((VIEW_FLOOR_X + 6, FLOOR_Y + 8), '← edge of the camera view',
+               font=F_SMALL, fill=(90, 130, 175))
         # Chair (behind the user)
         d.rounded_rectangle((CHAIR_X0, SEAT_Y, CHAIR_X1, SEAT_Y + 12), radius=4, fill=WOOD)
         for x in (CHAIR_X0 + 6, CHAIR_X1 - 6):
@@ -206,7 +221,7 @@ class LiveView:
         r = self.rows[i]
         img = self.background.copy()
         d = ImageDraw.Draw(img)
-        head = self._draw_user(d, r)
+        head = self._draw_user(d, r, i)
         self._draw_laptop(d, r, i)
         if r['user_encourages']:
             self._bubble(d, 'You can do it, robot!', (30, head[1] - 140), 260,
@@ -220,18 +235,34 @@ class LiveView:
             img = self._paused(img)
         return img
 
-    def _draw_user(self, d, r):
-        """Figure from the measured hip drop, foot lift, sway and lean.
+    def _draw_user(self, d, r, i):
+        """Figure from the measured hip drop, foot lift, sway and lean, and the simulated
+        walk to the laptop.
         :return: head centre"""
         t = r['t']
+        ax = ANKLE_X + r['walk'] * WALK_PX                  # where the user stands now
+        walking = i > 0 and r['walk'] != self.rows[i - 1]['walk']
         drop = r['hip_drop'] if r['hip_drop'] is not None else 0.0
         s = min(max(drop / self.seated_drop, 0.0), 1.0)     # 0 standing .. 1 seated
-        hip = (lerp(ANKLE_X - 8, (CHAIR_X0 + CHAIR_X1) / 2 + 10, s),
+        if r['walk'] > 0:
+            s = 0.0
+        hip = (lerp(ax - 8, (CHAIR_X0 + CHAIR_X1) / 2 + 10, s),
                lerp(FLOOR_Y - THIGH - SHIN + 6, SEAT_Y - 12, s))
-        ankle = (ANKLE_X, FLOOR_Y)
+        ankle = (ax, FLOOR_Y)
+        holding_chair = (r['exercise'] == 'single_leg_balance' and r['flow_state'] == 'doing'
+                         and r['walk'] == 0)
+        # Easier version: both hands on the chair, heel lifted, toe stays on the floor
+        toe_touch = holding_chair and r['simplified'] and r['phase'] == 'holding'
         lift = abs(r['foot_lift'] or 0.0)
         lift_px = min(lift, 0.3) * (THIGH + SHIN) * 2.0 if lift > config.FOOT_LIFT_THRESHOLD else 0
-        ankle2 = (ANKLE_X - 0.7 * lift_px, FLOOR_Y - lift_px)
+        if walking:
+            swing = math.sin(2 * math.pi * 1.6 * t)
+            ankle = (ax + 20 * swing, FLOOR_Y)
+            ankle2 = (ax - 20 * swing, FLOOR_Y - 8 * abs(swing))
+        elif toe_touch:
+            ankle2 = (ax - 26, FLOOR_Y - 24)
+        else:
+            ankle2 = (ax - 0.7 * lift_px, FLOOR_Y - lift_px)
 
         # Torso: leans forward when sitting, wobbles with the measured sway and lean
         lean = max(0.0, (r['lean_excess'] or 0.0) - 3.0)
@@ -246,13 +277,24 @@ class LiveView:
         seen = r['valid']
         body = BODY if seen else (178, 180, 186)
         back = BODY_BACK if seen else (205, 206, 210)
-        if r['exercise'] == 'single_leg_balance' and r['flow_state'] == 'doing':
+        if holding_chair:
             hand = (CHAIR_X0 + 12, SEAT_Y - 122)        # holding the back of the chair
             elbow = ((shoulder[0] + hand[0]) / 2, (shoulder[1] + hand[1]) / 2 + 22)
+        elif r['walk'] > 0:
+            swing = math.sin(2 * math.pi * 1.6 * t) if walking else 0.0
+            elbow = (shoulder[0] + 10 * swing, shoulder[1] + 55)    # arms along the body
+            hand = (shoulder[0] + 22 * swing, shoulder[1] + 105)
         else:
             elbow = (shoulder[0] + 26, shoulder[1] + 44)  # arms crossed on the chest
             hand = (shoulder[0] + 8, shoulder[1] + 26)
+        if holding_chair and r['simplified']:
+            # Second hand on the chair as well (the arm behind the body)
+            hand2 = (CHAIR_X0 + 34, SEAT_Y - 118)
+            elbow2 = ((shoulder[0] + hand2[0]) / 2 + 4, (shoulder[1] + hand2[1]) / 2 + 26)
+            limb(d, [shoulder, elbow2, hand2], back, 10)
         limb(d, [hip, knee_position(hip, ankle2), ankle2], back, 13)
+        if toe_touch:
+            limb(d, [ankle2, (ankle2[0] + 14, FLOOR_Y - 2)], back, 9)   # toe on the floor
         limb(d, [hip, shoulder], body, 20)
         limb(d, [hip, knee_position(hip, ankle), ankle], body, 13)
         limb(d, [ankle, (ankle[0] + 20, ankle[1])], body, 10)
@@ -260,7 +302,13 @@ class LiveView:
         d.ellipse((head[0] - HEAD_R, head[1] - HEAD_R, head[0] + HEAD_R, head[1] + HEAD_R),
                   fill=SKIN if seen else (226, 226, 228), outline=body, width=3)
         if not seen:
-            d.text((head[0] + 30, head[1] - 10), 'not fully in view', font=F_SMALL, fill=MUTED)
+            text = ('out of the camera view' if r['walk'] > 0.5
+                    else 'camera glitch: body not detected')
+            d.text((head[0] - 34 - d.textlength(text, font=F_SMALL), head[1] - 10), text,
+                   font=F_SMALL, fill=MUTED)
+        if toe_touch:
+            d.text((ax - 95, FLOOR_Y + 62), 'both hands on the chair, toe on the floor',
+                   font=F_SMALL, fill=MUTED)
         return head
 
     def _draw_laptop(self, d, r, i):
