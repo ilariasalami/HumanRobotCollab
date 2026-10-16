@@ -63,7 +63,23 @@ Options:
 | `--noise 1.0` | measurement noise multiplier |
 | `--fps 10` | simulated camera frame rate |
 | `--every-step` | print every time step |
+| `--live` | replay the session in a window (see below) |
+| `--save-video` | write the replay to `data/sim_<policy>_<user>_seed<n>.mp4` (takes about 2 minutes) |
+| `--speed 2` | replay speed for `--live` and `--save-video` |
 | `--no-plot`, `--show` | skip the figure / also open it in a window |
+
+### Live view
+
+```powershell
+python simulate.py --live
+```
+
+Replays the session in a window. Left, **the room** (side view): the chair, the user as a
+stick figure that sits, stands, lifts a foot and sways, and the laptop with the webcam and
+the robot's face about 3 m away; speech bubbles show what the robot says and when the user
+encourages it. The user's hidden state is shown small, marked "simulator only". Right,
+**the robot's mind**: its beliefs (HMM), desires (its priorities) and intention (current
+plan and action). Keys: space pause, `+` / `-` speed, `q` quit.
 
 ### Comparing the policies
 
@@ -99,6 +115,7 @@ exercise (testing), `d` debug panel, `m` marker in the test log, `q` quit.
 | `coach/Think.py` | Balance level, exercise-flow state machine, call to the policy, cooldowns |
 | `coach/Policy.py` | Actions, the Observation given to a policy, the rule policy |
 | `coach/Belief.py` | HMM over the user's state (forward algorithm) and the belief policy |
+| `coach/LiveView.py` | Live view / video of a simulated session (drawing only) |
 | `coach/Collaboration.py` | The robot's own wobble and its reaction to the user's encouragement |
 | `coach/Simulation.py` | Simulated user (hidden state, movement, sensor noise, encouraging the robot), session runner, metrics |
 | `coach/Act.py` | Camera view, robot message bar, debug panel |

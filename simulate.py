@@ -13,6 +13,8 @@ Examples:
     python simulate.py                          # HMM policy, 'mixed' user, seed 3
     python simulate.py --policy rule --user shaky --seed 5
     python simulate.py --every-step --no-plot   # print all time steps
+    python simulate.py --live                   # replay the session in a window
+    python simulate.py --save-video --no-plot   # write the replay to an .mp4 file
 """
 
 import argparse
@@ -47,6 +49,12 @@ def parse_args():
                         help='print every time step, not only the ones where something happens')
     parser.add_argument('--no-plot', action='store_true', help='do not make the timeline figure')
     parser.add_argument('--show', action='store_true', help='also open the figure in a window')
+    parser.add_argument('--live', action='store_true',
+                        help='replay the session in a window: the room and the robot mind')
+    parser.add_argument('--save-video', action='store_true',
+                        help='write the replay to data/<name>.mp4')
+    parser.add_argument('--speed', type=float, default=2.0,
+                        help='replay speed for --live and --save-video (default: 2)')
     return parser.parse_args()
 
 
@@ -233,6 +241,18 @@ def main():
                  f'seed {args.seed}, noise {args.noise}')
         plot_timeline(rows, title, png_path, args.show)
         print(f'  figure: {png_path}')
+
+    if args.live or args.save_video:
+        from coach.LiveView import LiveView
+        view = LiveView(rows, f'Living room - {args.policy} policy, {args.user} user, '
+                              f'seed {args.seed}')
+        if args.save_video:
+            mp4_path = DATA_DIR / f'{name}.mp4'
+            print(f'  writing video ({len(rows)} frames)...')
+            view.save_video(mp4_path, args.speed)
+            print(f'  video: {mp4_path}')
+        if args.live:
+            view.play(args.speed)
 
 
 if __name__ == '__main__':
