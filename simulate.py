@@ -175,11 +175,13 @@ def plot_timeline(rows, title, path, show):
     ax = axes[3]
     names = ['INSTRUCT', 'PRAISE', 'MOTIVATE', 'REASSURE_SLOW', 'REASSURE_HOLD',
              'SIMPLIFY', 'REST', 'TRACKING_LOST']
-    for start, end in spans('flow_state', 'doing'):
+    for k, (start, end) in enumerate(spans('flow_state', 'doing')):
         row = next(r for r in rows if r['t'] >= start)
         ax.axvspan(start, end, color=GRID, alpha=0.6, linewidth=0)
         label = row['exercise'].replace('_', ' ') + (' (simplified)' if row['simplified'] else '')
-        ax.text(start + 1, len(names) - 0.3, label, fontsize=8, color=INK, va='top')
+        # Every other label one line lower, so labels of short blocks do not overlap
+        ax.text(start + 1, len(names) - 0.3 - 0.6 * (k % 2), label, fontsize=8, color=INK,
+                va='top')
     acted = [(r['t'], names.index(r['action'])) for r in rows if r['action']]
     ax.scatter([a[0] for a in acted], [a[1] for a in acted], s=40, color='#0b0b0b', zorder=3)
     ax.set_yticks(range(len(names)), [n.lower() for n in names])

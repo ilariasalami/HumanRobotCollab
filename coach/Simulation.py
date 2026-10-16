@@ -54,6 +54,7 @@ class SimulatedUser:
 
         # Hidden state (ground truth, never given to the robot)
         self.state = ENGAGED
+        self.state_since = 0.0
         self.fatigue = 0.0
 
         # What the user sees on the screen (updated by see())
@@ -118,6 +119,8 @@ class SimulatedUser:
 
     def _update_state(self, t, dt, exercising):
         """Random change of the hidden state (a continuous-time Markov chain)."""
+        if t - self.state_since < config.SIM_MIN_STATE_S:
+            return
         if not exercising:
             # Resting or listening to an instruction: instability fades
             if self.state == UNSTABLE and self._happens(RECOVER_OUTSIDE_EXERCISE, dt):
@@ -145,6 +148,7 @@ class SimulatedUser:
 
     def _set_state(self, state, t):
         self.state = state
+        self.state_since = t
         # An unmotivated user who is holding a foot up puts it down soon
         if state == UNMOTIVATED and self.lift and self.lift['down'] == math.inf:
             self.lift['down'] = max(t, self.lift['up']) + self.rng.uniform(1.0, 4.0)
@@ -314,6 +318,13 @@ class SimulatedUser:
         if 'switch_leg' in output.events:
             self.leg = 'right'
             self.lift = None
+        # The user lifts the leg the screen asks for (e.g. 'right leg: hold 1/3'). The
+        # tracker picks the first leg from the first lift it detects, which can be noise.
+        text = output.status.progress_text if output.status else ''
+        for leg in ('left', 'right'):
+            if text.startswith(f'{leg} leg') and leg != self.leg:
+                self.leg = leg
+                self.lift = None
         if 'hold_interrupted' in output.events:
             self.lift = None
         if output.action is not Action.NONE:
@@ -404,6 +415,8 @@ def summarize(rows):
     - detected:           share of those that got a safety action before they ended
     - latency_s:          mean time from the start of an episode to the first safety action
     - false_alarms:       safety actions while the user was not unstable in the last 2 s
+    (a "slow down" for a rep done too fast is pace feedback, not a balance alarm, and is
+    left out of detected / latency_s / false_alarms)
     - motivate_latency_s: mean time from becoming unmotivated to the first MOTIVATE
     - messages:           number of robot messages (how talkative the robot is)
     - belief_accuracy:    share of exercise steps where the most likely HMM state is the
@@ -425,23 +438,26 @@ def summarize(rows):
             result.append((start, rows[-1]['t']))
         return result
 
-    def first_response(spans, actions, grace=0.5):
+    def balance_alarm(r):
+        return r['action'] in SAFETY_ACTIONS and 'too_fast' not in r['events']
+
+    def first_response(spans, is_response, grace=0.5):
         latencies = []
         for start, end in spans:
             hit = next((r['t'] for r in rows
-                        if start <= r['t'] <= end + grace and r['action'] in actions), None)
+                        if start <= r['t'] <= end + grace and is_response(r)), None)
             if hit is not None:
                 latencies.append(hit - start)
         return latencies
 
     unstable = episodes(UNSTABLE)
-    latencies = first_response(unstable, SAFETY_ACTIONS)
+    latencies = first_response(unstable, balance_alarm)
     unmotivated = episodes(UNMOTIVATED)
-    motivate_latencies = first_response(unmotivated, {'MOTIVATE'})
+    motivate_latencies = first_response(unmotivated, lambda r: r['action'] == 'MOTIVATE')
 
     false_alarms = 0
     for i, r in enumerate(rows):
-        if r['action'] in SAFETY_ACTIONS:
+        if balance_alarm(r):
             window = rows[max(0, i - int(2.0 / dt) if dt else 0):i + 1]
             if not any(w['user_state'] == UNSTABLE for w in window):
                 false_alarms += 1

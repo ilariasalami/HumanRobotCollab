@@ -289,6 +289,9 @@ SIM_ACTION_EFFECT = {
 }
 # After REST the simulated user sits / puts both feet down for this long.
 SIM_REST_S = 5.0
+# A state lasts at least this long before it can change again: a person's motivation or
+# balance does not switch back and forth every second.
+SIM_MIN_STATE_S = 3.0
 
 # User profiles: multipliers on the base rates (simulate.py --user).
 SIM_USERS = {
