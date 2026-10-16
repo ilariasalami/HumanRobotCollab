@@ -127,8 +127,9 @@ class SitToStand:
 
     def _shift_timers(self, dt):
         self.last_activity_t += dt
-        if self.last_rep_t is not None:
-            self.last_rep_t += dt
+        # The pace of a rep that was partly out of view cannot be judged: the user may
+        # have kept moving. Pausing this timer made the next rep look too fast.
+        self.last_rep_t = None
 
     def _status(self, events):
         attempts = self.reps + self.partial_reps
